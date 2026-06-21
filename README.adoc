@@ -1,0 +1,199 @@
+= My aports
+:source-language: sh
+:repo-name: user-aports
+:repo-branch: v3.23
+:gh-name: jirutka/{repo-name}
+:gh-branch: master
+:key-file: jakub@jirutka.cz-655775c4.rsa.pub
+:repos-uri: https://repo.jirutka.cz/alpine
+
+ifdef::env-github[]
+image:https://github.com/{gh-name}/workflows/CI/badge.svg?branch={gh-branch}[Build Status, link=https://github.com/{gh-name}/actions?query=workflow%3ACI+branch%3A{gh-branch}]
+endif::env-github[]
+
+This repository contains aports that are not merged in the official https://alpinelinux.org[Alpine Linux] repository yet or don’t adhere to Alpine polices (e.g. bundles).
+Packages are automatically built on https://github.com/{gh-name}/actions[GitHub Actions] for x86_64 architecture and synchronized with a remote server using SSHFS (SSH Filesystem).
+
+The *master branch* targets Alpine Linux *{repo-branch}*.
+Aports for older Alpine https://alpinelinux.org/releases/[release branches] are in the same named branches in this repository, e.g. v3.15.
+Alpine Edge (aka unstable, development branch) is not supported.
+
+
+== Repositories
+
+All the repositories are also available over link:rsync://repo.jirutka.cz/alpine/[].
+
+
+=== Backports
+
+* {repos-uri}/{repo-branch}/backports
+
+Aports from the official Alpine repositories backported from edge to {repo-branch}.
+
+
+=== User
+
+* {repos-uri}/{repo-branch}/user
+
+My aports that are not available in the official Alpine repository.
+
+Some aports in this repository are “bundles” – an aport with (some) bundled dependencies.
+It’s something that Alpine devs really don’t like, but it’s very convenient footnote:[Creating and maintaining gazillion distro-specific packages for Python modules, Rubygems, …, installing them globally and resolving version conflicts is nothing but totally insane…] for packaging applications with _a lot_ dependencies that are already managed by some language-specific package manager (e.g. pip, bundler, …).
+All bundles are installed in `/usr/lib/bundles/<pkgname>`.
+
+
+== How to use
+
+. Add security key of this repository to your `/etc/apk/keys`:
++
+[source, subs="attributes"]
+----
+cd /etc/apk/keys
+wget https://raw.githubusercontent.com/{gh-name}/{gh-branch}/.keys/{key-file}
+----
+
+. Add repositories that you want to use (see above) to `/etc/apk/repositories`.
+
+
+== Git Hooks
+
+You can find some useful git hooks in the `.githooks` directory.
+To use them, run the following command after cloning this repository:
+
+[source, sh]
+git config --local core.hooksPath .githooks
+
+
+== How to setup your own repository
+:remote-user: ci
+:remote-host: alpine.example.org
+:remote-dir: /var/www/alpine
+
+This guide will help you to set up your own aports repository and infrastructure for building packages using CI.
+It targets GitHub and GitHub Actions, but it might be modified for any other git hosting and CI.
+However, if you want to build packages on your own CI server, then this approach might be unnecessarily complicated.
+
+.*You will need:*
+* Account on GitHub.
+* Some server with SSH access for serving static files via HTTP(S) (e.g. using nginx), with enough disk space for binary packages.
+
+.*We will use the following variables:*
+* Domain name of your server: `{remote-host}` _(replace with your own domain)_
+* Name of the user on your server for deploying abuilds: `{remote-user}` _(you may choose different user)_
+* Path of directory on your server for deploying abuilds: `{remote-dir}` _(you may choose different directory)_
+
+
+=== Set up server
+
+. Create user `{remote-user}`:
++
+[source, subs="attributes"]
+----
+useradd --no-create-home --shell=/bin/sh --gid www-data {remote-user}
+
+# or if you don' have useradd
+adduser -h {remote-dir} -s /bin/sh -G www-data -D -H {remote-user}
+sed -i- 's/^{remote-user}:!:/{remote-user}:*:/' /etc/shadow
+----
+
+. Prepare directories:
++
+[source, subs="attributes"]
+----
+install -d -m 0755 -o root -g root {remote-dir}
+cd {remote-dir}
+
+install -d -m 0755 -o {remote-user} -g root packages
+install -d -m 0700 -o {remote-user} -g root .secret ~/.ssh
+----
+
+. Jail user `{remote-user}` to `{remote-dir}` and restrict him to use sftp only; add the following lines to `/etc/ssh/sshd_config`:
++
+[source, conf, subs="attributes"]
+----
+Match User {remote-user}
+    ChrootDirectory {remote-dir}
+    ForceCommand internal-sftp
+    X11Forwarding no
+    AllowTcpForwarding no
+----
+
+. Set up web server to serve `{remote-dir}/packages` on http://{remote-host}/packages. Ensure that `{remote-dir}/.secret/` is *not* accessible from web! Example configuration for nginx:
++
+[source, nginx, subs="attributes"]
+----
+server {
+    listen [::]:80;
+    server_name {remote-host};
+    root {remote-dir};
+
+    location /.security {
+        deny all;
+    }
+
+    location / {
+        autoindex on;
+    }
+}
+----
+
+=== Set up repository
+
+. Create repository for your aports on GitHub. Let’s assume that it’s named `{repo-name}`.
+
+. Clone branch `template` of this repository, change remote to your own repository and create branch `master`:
++
+[source, subs="attributes"]
+----
+git clone --branch template https://github.com/{gh-name}.git {repo-name}
+cd {repo-name}
+git remote remove origin
+git remote add origin git@github.com:YOUR-USERNAME/{repo-name}.git
+git checkout -b master
+----
+
+. Generate SSH deploy key:
++
+[source]
+----
+mkdir -p .keys
+ssh-keygen -C '' -t ed25519 -N '' -f .keys/deploy-key
+----
+
+. Go to *Settings > Secret* in your repository on GitHub and add new secrets:
+** `SSH_KNOWN_HOSTS` – paste output of `ssh-keyscan {remote-host}`
+** `SSH_PRIVATE_KEY` – paste content of `.keys/deploy-key`
+** `SSH_REMOTE` – `{remote-user}@{remote-host}:/`
+
+. Copy `.keys/deploy-key.pub` to file `~/.ssh/authorized_keys` in home directory of user `{remote-user}` on your server. This file *must* be owned by `{remote-user}` and has mode 0600!
+
+. Generate a security key for signing packages:
++
+[source]
+----
+KEY_NAME="$(git config --get user.email)-$(printf "%x" $(date +%s)).rsa"
+openssl genrsa -out ".keys/$KEY_NAME" 2048
+openssl rsa -in ".keys/$KEY_NAME" -pubout -out ".keys/$KEY_NAME.pub"
+----
+
+. Copy `$KEY_NAME` to file `{remote-dir}/.secret/$KEY_NAME` on the server, set owner `{remote-user}` and mode `0400`.
+
+. Delete generated private keys:
++
+[source]
+----
+rm .keys/deploy-key ".keys/$KEY_NAME"
+----
+
+. Adjust `BRANCH`, `BUILD_REPOS` and repositories (step “Configure repositories”) in link:.github/workflows/ci.yml[].
+
+. Change variables `:repo-name:`, `:repo-branch:`, `:gh-name:`, `:repos-uri:`, and `:key-file:` on the top of file link:README.adoc[].
+
+. Commit changes and push to GitHub.
+
+Now create directories for your repositories (e.g. user, backports, …) and add your aports.
+
+
+== License
+
+This readme, abuilds and support scripts are licensed under http://opensource.org/licenses/MIT[MIT License].
