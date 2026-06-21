@@ -8,8 +8,8 @@ env:
   # REPOS_DIR is the sftp user's home (the chroot root). The web server serves
   # only its `public/` subdirectory, so `.secret/` at the root is never exposed.
   REPOS_DIR: /home/ci/repos
-  BUILD_REPOS: backports user
-  PACKAGER_KEYNAME: jakub@jirutka.cz-655775c4.rsa
+  BUILD_REPOS: incubating
+  PACKAGER_KEYNAME: jishin-alpine.oo@emunest.net-6a383316.rsa
 
 jobs:
   build:
@@ -32,10 +32,9 @@ jobs:
       - name: Configure Alpine repositories
         run: |
           cat > /etc/apk/repositories <<EOF
-          https://repo.jirutka.cz/alpine/$BRANCH/backports
+          https://alpine.packages.jishin.emunest.net/alpine/$BRANCH/incubating
           https://dl-cdn.alpinelinux.org/alpine/$BRANCH/main
           https://dl-cdn.alpinelinux.org/alpine/$BRANCH/community
-          https://repo.jirutka.cz/alpine/$BRANCH/user
           EOF
           # Ignore unavailable repos, this happens when bootstrapping a new branch.
           apk update || true
