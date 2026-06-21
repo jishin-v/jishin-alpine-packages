@@ -1,0 +1,14 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+pkgname=jishin-dummy
+pkgver=0
+pkgrel=0
+pkgdesc="A dummy aport that produces an empty package"
+url="https://github.com/jishin-v/jishin-alpine-packages"
+arch="noarch"
+license="MIT"
+source=""
+
+package() {
+	mkdir -p "$pkgdir"
+}
