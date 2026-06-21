@@ -4,7 +4,7 @@ on:
 
 env:
   # Keep in sync with jobs.build.container.image!
-  BRANCH: v3.23
+  BRANCH: v3.24
   # REPOS_DIR is the sftp user's home (the chroot root). The web server serves
   # only its `public/` subdirectory, so `.secret/` at the root is never exposed.
   REPOS_DIR: /home/ci/repos
@@ -15,7 +15,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: alpine:3.23
+      image: alpine:3.24
       options: --privileged --device /dev/fuse
       volumes:
         - ${{ github.workspace }}:/home/ci/aports

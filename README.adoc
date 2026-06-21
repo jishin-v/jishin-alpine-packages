@@ -1,7 +1,7 @@
 = My aports
 :source-language: sh
 :repo-name: jishin-alpine-packages
-:repo-branch: v3.23
+:repo-branch: v3.24
 :gh-name: jishin-v/{repo-name}
 :gh-branch: main
 :key-file: jishin-alpine.oo@emunest.net-6a383316.rsa
