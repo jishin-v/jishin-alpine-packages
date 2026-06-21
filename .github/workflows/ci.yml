@@ -5,6 +5,8 @@ on:
 env:
   # Keep in sync with jobs.build.container.image!
   BRANCH: v3.23
+  # REPOS_DIR is the sftp user's home (the chroot root). The web server serves
+  # only its `public/` subdirectory, so `.secret/` at the root is never exposed.
   REPOS_DIR: /home/ci/repos
   BUILD_REPOS: backports user
   PACKAGER_KEYNAME: jakub@jirutka.cz-655775c4.rsa
@@ -96,7 +98,8 @@ jobs:
           su ci sh -c 'buildrepo -d $REPODEST $@' -- $args
         working-directory: /home/ci/aports
         env:
-          REPODEST: ${{ env.REPOS_DIR }}/alpine/${{ env.BRANCH }}
+          # Write packages into the webroot (public/), which is disjoint from .secret/.
+          REPODEST: ${{ env.REPOS_DIR }}/public/alpine/${{ env.BRANCH }}
 
       - name: Unmount remote FS
         if: ${{ always() }}

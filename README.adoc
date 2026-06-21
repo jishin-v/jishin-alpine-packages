@@ -103,7 +103,8 @@ sed -i- 's/^{remote-user}:!:/{remote-user}:*:/' /etc/shadow
 install -d -m 0755 -o root -g root {remote-dir}
 cd {remote-dir}
 
-install -d -m 0755 -o {remote-user} -g root packages
+# `public/` is the web server root; `.secret/` is a sibling of it, so it's never served.
+install -d -m 0755 -o {remote-user} -g root public
 install -d -m 0700 -o {remote-user} -g root .secret ~/.ssh
 ----
 
@@ -118,18 +119,14 @@ Match User {remote-user}
     AllowTcpForwarding no
 ----
 
-. Set up web server to serve `{remote-dir}/packages` on http://{remote-host}/packages. Ensure that `{remote-dir}/.secret/` is *not* accessible from web! Example configuration for nginx:
+. Set up web server to serve `{remote-dir}/public` as the document root on http://{remote-host}/. Since `.secret/` is *not* inside `public/`, it is never exposed to the web. Example configuration for nginx:
 +
 [source, nginx, subs="attributes"]
 ----
 server {
     listen [::]:80;
     server_name {remote-host};
-    root {remote-dir};
-
-    location /.security {
-        deny all;
-    }
+    root {remote-dir}/public;
 
     location / {
         autoindex on;
