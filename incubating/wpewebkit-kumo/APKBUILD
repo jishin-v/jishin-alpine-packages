@@ -1,0 +1,178 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# WPE WebKit fork used by the `kumo` browser. Packaged from the
+# chrisduerr/WebKit fork (tag v2.52.4) since GitHub refuses to generate
+# archives for it (HTTP 422); the source tarball is mirrored via Git LFS in
+# the sibling jishin-alpine-repository-bulk repo (built by
+# prepare-source.sh, which prunes build-irrelevant subtrees like
+# LayoutTests/JSTests/Websites).
+#
+# The build recipe mirrors Alpine's own community/webkit2gtk-4.1 aport
+# (clang+lld, samurai, -U_FORTIFY_SOURCE -g1), adapted to the WPE port and
+# the -DENABLE_WPE_PLATFORM=ON flag that kumo's wpe-platform bindings need.
+pkgname=wpewebkit-kumo
+pkgver=2.52.4
+pkgrel=0
+pkgdesc="Embeddable web content engine (WPE port, kumo fork)"
+url="https://github.com/chrisduerr/WebKit"
+arch="aarch64 x86_64"
+license="
+	AFL-2.0 OR GPL-2.0-or-later
+	Apache-2.0
+	Apache-2.0 WITH LLVM-exception
+	BSD-2-Clause
+	BSD-2-Clause-Views
+	BSD-3-Clause
+	BSD-Source-Code
+	BSL-1.0
+	bzip2-1.0.6
+	GPL-2.0-only
+	GPL-3.0-only WITH Autoconf-exception-3.0
+	GPL-3.0-or-later WITH Bison-exception-2.2
+	ICU
+	ISC
+	LGPL-2.1-only
+	LGPL-2.1-or-later
+	MIT
+	MPL-1.1
+	MPL-2.0
+	NCSA
+	NCSA OR MIT
+	OFL-1.1
+	SunPro
+	Unicode-TOU
+	"
+# Runtime libs the engine links; the rest (cairo/pango/glib/...) are pulled
+# transitively by apk and/or abuild's automatic so: dependency tracing.
+depends="
+	at-spi2-core
+	bubblewrap
+	gst-plugins-bad
+	gst-plugins-base
+	gstreamer
+	harfbuzz-icu
+	hyphen
+	icu-libs
+	libavif
+	libdrm
+	libepoxy
+	libgcrypt
+	libinput-libs
+	libjxl
+	libpng
+	libseccomp
+	libtasn1
+	libwpe
+	libwpebackend-fdo
+	libwebp
+	libxkbcommon
+	libxml2
+	libxslt
+	libsoup3
+	mesa
+	openjpeg
+	sqlite-libs
+	wayland-libs-client
+	woff2
+	xdg-dbus-proxy
+	"
+makedepends="
+	at-spi2-core-dev
+	bison
+	clang
+	cmake
+	flex
+	gobject-introspection-dev
+	gperf
+	gst-plugins-bad-dev
+	gst-plugins-base-dev
+	gstreamer-dev
+	hyphen-dev
+	icu-dev
+	lcms2-dev
+	libavif-dev
+	libdrm-dev
+	libepoxy-dev
+	libgcrypt-dev
+	libinput-dev
+	libjxl-dev
+	libjpeg-turbo-dev
+	libpng-dev
+	libseccomp-dev
+	libsoup3-dev
+	libwpe-dev
+	libwpebackend-fdo-dev
+	libwebp-dev
+	libxml2-dev
+	libxslt-dev
+	libxkbcommon-dev
+	lld
+	llvm
+	mesa-dev
+	openjpeg-dev
+	pango-dev
+	python3
+	ruby
+	ruby-getoptlong
+	samurai
+	sqlite-dev
+	unifdef
+	wayland-dev
+	wayland-protocols
+	woff2-dev
+	"
+# Provides the virtual `wpewebkit` and the WPE sonames kumo links against.
+provides="wpewebkit=$pkgver-r$pkgrel"
+conflicts="wpewebkit"
+subpackages="$pkgname-dev"
+options="!check" # WPE port ships no runnable test suite in release tarballs
+source="wpewebkit-$pkgver.tar.zst::https://github.com/jishin-v/jishin-alpine-repository-bulk/raw/refs/heads/master/wpewebkit-kumo/wpewebkit-$pkgver.tar.zst"
+builddir="$srcdir/wpewebkit-$pkgver"
+
+build() {
+	# Upstream prefers Clang; matches Alpine's webkit2gtk aport and roughly
+	# halves the size of the debug symbols.
+	export CC=clang
+	export CXX=clang++
+	export AR=llvm-ar
+	export NM=llvm-nm
+	export RANLIB=llvm-ranlib
+	export LDFLAGS="$LDFLAGS -fuse-ld=lld"
+
+	# WebKit is broken with _FORTIFY_SOURCE; keep debug symbols small.
+	export CFLAGS="$CFLAGS -U_FORTIFY_SOURCE -g1"
+	export CXXFLAGS="$CXXFLAGS -U_FORTIFY_SOURCE -g1"
+
+	# JIT-ted code crashes with CET enabled on x86_64.
+	case "$CARCH" in
+		x86_64)
+			export CFLAGS="$CFLAGS -fcf-protection=none"
+			export CXXFLAGS="$CXXFLAGS -fcf-protection=none"
+			;;
+	esac
+
+	cmake -B build -G Ninja \
+		-DPORT=WPE \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_SKIP_RPATH=ON \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_LIBDIR=lib \
+		-DCMAKE_INSTALL_LIBEXECDIR=lib \
+		-DENABLE_DOCUMENTATION=OFF \
+		-DENABLE_JOURNALD_LOG=OFF \
+		-DENABLE_MINIBROWSER=OFF \
+		-DENABLE_SAMPLING_PROFILER=OFF \
+		-DENABLE_SPEECH_SYNTHESIS=OFF \
+		-DENABLE_WPE_PLATFORM=ON \
+		-DUSE_LIBBACKTRACE=OFF
+	cmake --build build
+}
+
+package() {
+	DESTDIR="$pkgdir" cmake --install build
+}
+
+sha256sums="
+fd6091a4cb19e8428a2111dfb6280b39e8a793b4df135c604f9f6c8cee523c47  wpewebkit-2.52.4.tar.zst
+"
