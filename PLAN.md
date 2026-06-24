@@ -160,19 +160,27 @@ Both engines on → must vendor crate graph **including the 4 git forks**. Mirro
 same approach as wpewebkit-kumo: generate the vendor tarball via a `prepare-source.sh`
 in `alpine_packages_bulk/kumo/` (gitignored persistent clone/cargo-home reused across
 runs), commit it to the **bulk** repo via LFS, and point the APKBUILD `source=` at the
-raw GitHub LFS URL. Sketch:
+raw GitHub LFS URL. The kumo source tarball itself is fetchable directly from sourcehut,
+so **only the vendor tarball** needs mirroring.
+
+**The vendor tarball is arch-independent.** `cargo vendor` (no `--target`) vendored the
+*full* graph including all target-conditional deps (verified empirically: it pulled in
+aarch64-only and even windows-only crates from a synthetic project). `cargo vendor`
+doesn't even accept `--target` (it errors). So a single tarball covers x86_64 + aarch64;
+arch only matters at compile time, which runs natively per-arch in CI.
+
+Sketch:
 ```sh
 # in alpine_packages_bulk/kumo/prepare-source.sh (reuses .clones/kumo)
 git clone --depth 1 --branch v1.8.2 https://git.sr.ht/~undeadleech/kumo .clones/kumo
 cd .clones/kumo
-cargo fetch --locked --target "$(...)-unknown-linux-musl"
-cargo vendor vendor
-printf '[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "vendor"\n' > .cargo/config.toml
-tar --zstd -cf ../../kumo/kumo-1.8.2-vendor.tar.zst vendor .cargo/config.toml
+cargo fetch --locked          # populate registry cache (no --target needed)
+cargo vendor vendor           # vendored full graph, all targets
+# .cargo/config.toml emitted by `cargo vendor`; ship it alongside the vendor dir
+tar --zstd -cf ../../kumo/kumo-1.8.2-vendor.tar.zst vendor
 ```
-Vendor tarball will be **large** (Servo = hundreds of crates) — fine for the bulk LFS
-repo. (Alternatively the kumo source tarball from sourcehut is fetchable directly, so
-only the vendor tarball needs mirroring.)
+(`cargo vendor` also prints the `[source.crates-io] replace-with = "vendored-sources"`
+config snippet; bake it into the APKBUILD or ship a `.cargo/config.toml`.)
 
 ### APKBUILD shape
 - `pkgname=kumo`, `pkgver=1.8.2`, `pkgrel=0`.
