@@ -25,7 +25,12 @@ no need for perfect subpackage splits).
   gitignored shallow clone across runs; prunes `LayoutTests Websites JSTests
   PerformanceTests ManualTests WebDriverTests WebKit.xcworkspace` per WebKit's
   top-level `CMakeLists.txt`).
-- [ ] **Commit 2 — `incubating/wpewebkit-kumo/APKBUILD`** (the WPE WebKit fork).
+- [x] **Commit 2 — `incubating/wpewebkit-kumo/APKBUILD`** (the WPE WebKit fork). Done
+  (`17ba479`). Mirrors Alpine's own `community/webkit2gtk-4.1` recipe (clang+lld,
+  samurai, `-U_FORTIFY_SOURCE -g1`), adapted to `PORT=WPE` + `ENABLE_WPE_PLATFORM=ON`.
+  `source=` points at the bulk LFS tarball; full SPDX license list. **Bulk repo pushed**
+  at `jishin-v/jishin-alpine-repository-bulk` (branch `master`); raw URL verified live
+  (HTTP 200, LFS redirect).
 - [ ] **Commit 3 — `incubating/kumo/APKBUILD`** (the browser).
 
 ### Source hosting (RESOLVED)
@@ -151,17 +156,23 @@ Produced by `../alpine_packages_bulk/wpewebkit-kumo/prepare-source.sh` and commi
 ## Commit 3 — `incubating/kumo/APKBUILD`
 
 ### Vendoring
-Both engines on → must vendor crate graph **including the 4 git forks**. Produce offline:
+Both engines on → must vendor crate graph **including the 4 git forks**. Mirror the
+same approach as wpewebkit-kumo: generate the vendor tarball via a `prepare-source.sh`
+in `alpine_packages_bulk/kumo/` (gitignored persistent clone/cargo-home reused across
+runs), commit it to the **bulk** repo via LFS, and point the APKBUILD `source=` at the
+raw GitHub LFS URL. Sketch:
 ```sh
-cd /tmp/kumo-investigation/kumo-v1.8.2
-cargo fetch --locked --target "$CARCH-unknown-linux-musl"
+# in alpine_packages_bulk/kumo/prepare-source.sh (reuses .clones/kumo)
+git clone --depth 1 --branch v1.8.2 https://git.sr.ht/~undeadleech/kumo .clones/kumo
+cd .clones/kumo
+cargo fetch --locked --target "$(...)-unknown-linux-musl"
 cargo vendor vendor
-# then write .cargo/config.toml pointing source.replace-with -> vendored-sources
-tar czf ../vendor.tar.gz vendor
-sha256sum ../vendor.tar.gz
+printf '[source.crates-io]\nreplace-with = "vendored-sources"\n[source.vendored-sources]\ndirectory = "vendor"\n' > .cargo/config.toml
+tar --zstd -cf ../../kumo/kumo-1.8.2-vendor.tar.zst vendor .cargo/config.toml
 ```
-Vendor tarball will be **large** (Servo = hundreds of crates). For DIY, committing it
-into the aport dir is acceptable; alternatively host on `alpine.packages.jishin.emunest.net`.
+Vendor tarball will be **large** (Servo = hundreds of crates) — fine for the bulk LFS
+repo. (Alternatively the kumo source tarball from sourcehut is fetchable directly, so
+only the vendor tarball needs mirroring.)
 
 ### APKBUILD shape
 - `pkgname=kumo`, `pkgver=1.8.2`, `pkgrel=0`.
