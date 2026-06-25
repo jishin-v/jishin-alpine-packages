@@ -46,6 +46,7 @@ license="
 # Runtime libs the engine links; the rest (cairo/pango/glib/...) are pulled
 # transitively by apk and/or abuild's automatic so: dependency tracing.
 depends="
+	!wpewebkit
 	at-spi2-core
 	bubblewrap
 	gst-plugins-bad
@@ -124,7 +125,6 @@ makedepends="
 	"
 # Provides the virtual `wpewebkit` and the WPE sonames kumo links against.
 provides="wpewebkit=$pkgver-r$pkgrel"
-conflicts="wpewebkit"
 subpackages="$pkgname-dev"
 options="!check" # WPE port ships no runnable test suite in release tarballs
 source="wpewebkit-$pkgver.tar.zst::https://github.com/jishin-v/jishin-alpine-repository-bulk/raw/refs/heads/master/wpewebkit-kumo/wpewebkit-$pkgver.tar.zst"
@@ -173,6 +173,6 @@ package() {
 	DESTDIR="$pkgdir" cmake --install build
 }
 
-sha256sums="
-fd6091a4cb19e8428a2111dfb6280b39e8a793b4df135c604f9f6c8cee523c47  wpewebkit-2.52.4.tar.zst
+sha512sums="
+0db3b592abfd6a7156ae307c626c3103cd6e0bb99ac607d037ead00a96895b894905170133b2fa1cf1eb6c7742f96342f50d2a8853ffc53a84365f6a30fe90e8  wpewebkit-2.52.4.tar.zst
 "
