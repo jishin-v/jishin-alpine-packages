@@ -101,6 +101,7 @@ makedepends="
 	libjpeg-turbo-dev
 	libpng-dev
 	libseccomp-dev
+	libtasn1-dev
 	libsoup3-dev
 	libwpe-dev
 	libwpebackend-fdo-dev
@@ -165,7 +166,8 @@ build() {
 		-DENABLE_SAMPLING_PROFILER=OFF \
 		-DENABLE_SPEECH_SYNTHESIS=OFF \
 		-DENABLE_WPE_PLATFORM=ON \
-		-DUSE_LIBBACKTRACE=OFF
+		-DUSE_LIBBACKTRACE=OFF \
+		-DUSE_SYSTEM_SYSPROF_CAPTURE=OFF
 	cmake --build build
 }
 
