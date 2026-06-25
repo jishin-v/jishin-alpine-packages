@@ -1,0 +1,91 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# kumo — Wayland mobile web browser. Both browser engines (WebKit via WPE, and
+# Servo) are enabled (upstream default), which gives the user runtime per-tab
+# engine switching via the context menu ("Reload in WebKit"/"Reload in Servo").
+#
+# Servo is pulled from a git fork and, due to kumo's [patch.crates-io] on
+# servo_arc, the dependency graph cannot be `cargo vendor`-ed (two stylo
+# sources resolve to the same servo_arc version). So we follow Alpine's own
+# `community/helix` idiom: `options="net"` + `cargo fetch --locked` in prepare,
+# then `cargo build --frozen` (offline) in build. DIY repo; no vendoring.
+pkgname=kumo
+pkgver=1.8.2
+pkgrel=0
+pkgdesc="Wayland mobile web browser (WebKit/WPE + Servo engines)"
+url="https://git.sr.ht/~undeadleech/kumo"
+arch="aarch64 x86_64"
+license="GPL-3.0-only"
+# Runtime: the WPE WebKit fork + the GStreamer stack the README requires for
+# media playback, plus a concrete TTF font (catacomb's `ttf-font` is virtual).
+depends="
+	wpewebkit-kumo
+	gst-plugins-base
+	gst-plugins-good
+	gst-plugins-bad
+	gst-libav
+	font-dejavu
+	"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	wpewebkit-kumo-dev
+	glib-dev
+	libsoup3-dev
+	cairo-dev
+	pango-dev
+	librsvg-dev
+	sqlite-dev
+	libxkbcommon-dev
+	libdrm-dev
+	mesa-dev
+	wayland-dev
+	wayland-protocols
+	fontconfig-dev
+	freetype-dev
+	harfbuzz-dev
+	pkgconf
+	python3
+	cmake
+	clang
+	llvm
+	"
+# `net` lets abuild reach crates.io + the git forks during `cargo fetch`.
+# `!check`: kumo's only unit tests are CLI toml-parsing (src/cli.rs); running
+# them needs a Wayland compositor for the rest of the binary and isn't worth
+# gating a DIY build on.
+options="net !check"
+source="https://git.sr.ht/~undeadleech/kumo/archive/v$pkgver.tar.gz"
+builddir="$srcdir/kumo-v$pkgver"
+
+prepare() {
+	default_prepare
+	# Populate the cargo cache for the host target (deterministic per Cargo.lock).
+	# CI builds natively per-arch, so fetching the host target is sufficient.
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	# Default features enable both engines (servo + webkit).
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/kumo "$pkgdir"/usr/bin/kumo
+
+	# Desktop integration (all files ship in-tree). The metainfo's launchable
+	# desktop-id is org.catacombing.kumo.desktop; the .desktop's Icon= is Kumo.
+	install -D -m644 Kumo.desktop \
+		"$pkgdir"/usr/share/applications/org.catacombing.kumo.desktop
+	install -D -m644 logo.svg \
+		"$pkgdir"/usr/share/icons/hicolor/scalable/apps/Kumo.svg
+	install -D -m644 org.catacombing.kumo.metainfo.xml \
+		"$pkgdir"/usr/share/metainfo/org.catacombing.kumo.metainfo.xml
+}
+
+sha512sums="
+60b3131cb6167c3b00075f781d2026479494fc168fe364920591a1fafabc8ce32b12fd5fc7dfb884195c5f15226b765813573df1e3623c22e72456a0d895e320  kumo-1.8.2.tar.gz
+"
