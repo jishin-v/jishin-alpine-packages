@@ -31,17 +31,28 @@ no need for perfect subpackage splits).
   `source=` points at the bulk LFS tarball; full SPDX license list. **Bulk repo pushed**
   at `jishin-v/jishin-alpine-repository-bulk` (branch `master`); raw URL verified live
   (HTTP 200, LFS redirect).
-- [ ] **Commit 3 — `incubating/kumo/APKBUILD`** (the browser).
+- [x] **Commit 3 — `incubating/kumo/APKBUILD`** (the browser). Done (`3f96df2`).
+  **No vendoring**: `cargo vendor` is unworkable for kumo because Servo + the
+  `[patch.crates-io]` on `servo_arc` resolve two different stylo revs to the same
+  `servo_arc` version, which vendor rejects ("duplicate version ... from two sources").
+  Instead follows Alpine's `community/helix` idiom: `options="net !check"` +
+  `cargo fetch --target="$CTARGET" --locked` (prepare) + `cargo auditable build --frozen
+  --release` (build). Both engines enabled (upstream default) → runtime per-tab switching.
+  Source is the fetchable sourcehut tarball (sha512 pinned); desktop/icon/metainfo
+  installed from in-tree files. No bulk-repo asset needed for kumo.
 
-### Source hosting (RESOLVED)
-The `chrisduerr/WebKit` fork's tarball is committed to the **`_bulk` LFS repo**.
-Once that repo is pushed to GitHub (assumed `jishin-v/jishin-alpine-packages_bulk`,
-branch `main`), the APKBUILD `source=` line points at the raw LFS object:
-`https://raw.githubusercontent.com/jishin-v/jishin-alpine-packages_bulk/main/wpewebkit-kumo/wpewebkit-2.52.4.tar.zst`
+### Source hosting (wpewebkit-kumo: RESOLVED)
+The `chrisduerr/WebKit` fork's tarball is committed to the **`_bulk` LFS repo**
+(`jishin-v/jishin-alpine-repository-bulk`, branch `master`) and the APKBUILD `source=`
+points at the raw LFS object, verified live:
+`https://github.com/jishin-v/jishin-alpine-repository-bulk/raw/refs/heads/master/wpewebkit-kumo/wpewebkit-2.52.4.tar.zst`
+(kumo itself needs no bulk asset — it uses the sourcehut tarball + network fetch.)
 (GitHub serves the real LFS content at the raw URL). Top-level dir inside the tarball
 is `wpewebkit-2.52.4/`, so `builddir="$srcdir/wpewebkit-2.52.4"`.
 
-**TODO before Commit 2:** create+push the `_bulk` remote so the raw URL resolves in CI.
+**TODO before CI builds:** push this aports repo (`staging` is 5 commits ahead of
+`origin/staging`) so the workflow runs `buildrepo` over `incubating/`. Expect to
+iterate on missing makedepends (esp. Servo's mozjs/aws-lc-sys C deps) and musl quirks.
 
 ---
 
