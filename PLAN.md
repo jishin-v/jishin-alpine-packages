@@ -41,24 +41,43 @@ no need for perfect subpackage splits).
   Source is the fetchable sourcehut tarball (sha512 pinned); desktop/icon/metainfo
   installed from in-tree files. No bulk-repo asset needed for kumo.
 
-### Resumable CI builds (ccache on sshfs) — DONE
-WebKit's ~9.4k translation units don't finish compiling inside the 5h
-`timeout-minutes: 300` job on a 4-core GitHub runner (CI stalled at
-`[8620/9438]`). Rather than splitting the aport, the build is made **resumable**
-via `ccache`:
-- `ci.yml`: `apk add ccache`, and the Build step exports `CCACHE_DIR=$REPOS_DIR/.ccache`
-  + `CCACHE_MAXSIZE=25G` (sits next to `public/` on the sshfs share, never served).
-  `ccache -z` before / `ccache -s` after the run reports per-run hit rate.
-- `APKBUILD build()`: when `ccache` is on `$PATH`, adds
-  `-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache` (the
-  idiomatic CMake hook — compiler identification still runs on plain clang).
-abuild always wipes `build/`, but ccache replays finished objects from the
-persistent dir, so a timed-out run leaves a warm cache and **re-running the same
-job** (or the next push) compiles only the remainder. Caveats: ccache over sshfs
-adds per-TU lookup latency (~10-40 min extra on a fully-warm replay) but that's
-trivial vs. 6h of recompile; `CCACHE_MAXSIZE` must hold a full build (~15-20G) or
-LRU eviction breaks the resume — watch `df $REPOS_DIR`. If sshfs proves too slow,
-fall back to a local `$CCACHE_DIR` + `rsync` to/from the share between runs.
+### Resumable CI builds (local ccache + tarball on sshfs) — DONE
+WebKit's ~9.4k translation units don't finish inside GitHub's 6h job limit on a
+4-core runner. ccache makes the build resumable, BUT the cache must live on a
+**fast local disk during the build**. A first attempt put `CCACHE_DIR` directly
+on the sshfs mount, which made the build *degenerate*: every hit is several
+serial SFTP round-trips, so a run that had already timed out once spent almost
+its whole 6h budget replaying ~8k hits and compiled only ~700 new objects
+(7922 → 8607); each successive run covers *less* ground and it never converges.
+
+Current scheme: during the build `CCACHE_DIR=/tmp/ccache` (local runner SSD);
+the `wpewebkit-kumo` APKBUILD persists it as a compressed tarball on the remote
+mount between runs. All of this lives in the APKBUILD's `build()` and is opt-in
+via env that CI sets, so:
+- **Zero waste when not building it** — `buildrepo` skips a package whose apk is
+  already in `REPODEST`, so `build()` (and thus the tarball download/upload)
+  never runs for an already-published wpewebkit-kumo. Bumping `pkgrel` naturally
+  invalidates this and re-triggers a build.
+- **Scoped to the package** — kumo / jishin-dummy have none of this code.
+
+Env (CI → APKBUILD): `CCACHE_DIR` (local), `CCACHE_PERSIST_DIR` (remote mount dir
+for the tarball), `CCACHE_BUILD_BUDGET` (inner time cap, seconds). Mechanics
+(helper functions in the APKBUILD):
+- `_ccache_restore` (start of `build()`): download+extract the tarball into the
+  local dir; a one-time migration stream-copies the old raw `/.ccache` dir if the
+  tarball isn't there yet, so the ~8k objects already cached aren't lost.
+- inner `timeout $CCACHE_BUILD_BUDGET ninja -C build` (4h): signals ninja directly
+  so it tears down its compile children (a SIGTERM to `cmake --build` would orphan
+  them and keep mutating the cache mid-upload). Well under the 6h job limit.
+- `_ccache_save` (after the build, **always**, even on rc=124 timeout): re-tars
+  the local cache and atomically publishes on the remote (temp file + SFTP
+  posix-rename). Skipped automatically when the cache fingerprint is unchanged
+  (all-hits run / early configure failure) so identical data isn't re-uploaded.
+  Stale `.tmp.*` uploads from a crashed run are cleaned on the next pass.
+A poller prints `ccache -s` every 15 min for live visibility. With local hits the
+build now converges: a timed-out run caches ~6k objects, the next replays those in
+minutes and finishes. If the remote is ever flaky, the whole tarball dance is
+gated on `CCACHE_PERSIST_DIR` being set, so local `abuild` is unaffected.
 
 ### Source hosting (wpewebkit-kumo: RESOLVED)
 The `chrisduerr/WebKit` fork's tarball is committed to the **`_bulk` LFS repo**

@@ -131,6 +131,93 @@ options="!check" # WPE port ships no runnable test suite in release tarballs
 source="wpewebkit-$pkgver.tar.zst::https://github.com/jishin-v/jishin-alpine-repository-bulk/raw/refs/heads/master/wpewebkit-kumo/wpewebkit-$pkgver.tar.zst"
 builddir="$srcdir/wpewebkit-$pkgver"
 
+# --- Resumable ccache for CI -------------------------------------------------
+# WebKit's ~9.4k translation units don't finish inside GitHub's 6h job limit on
+# a 4-core runner, so ccache makes the build resumable across runs. BUT the
+# cache must live on a fast LOCAL disk during the build: a first attempt put
+# CCACHE_DIR directly on the (high-latency) sshfs mount and the build went
+# degenerate -- every one of the ~9.4k hits is several serial SFTP round-trips,
+# so a run that had already timed out once spent almost its whole budget
+# replaying hits and compiled almost nothing new (it never converged).
+#
+# So during the build CCACHE_DIR is local; the cache is persisted between CI
+# runs as a compressed tarball on the remote mount, downloaded before compiling
+# and uploaded after. Everything here runs only inside build(), so when
+# buildrepo skips an already-published apk (or for any other package) no
+# transfer happens at all. Opt-in via env set by CI:
+#   CCACHE_DIR          fast local cache dir (e.g. /tmp/ccache)
+#   CCACHE_PERSIST_DIR  remote mount dir holding the tarball
+#   CCACHE_BUILD_BUDGET inner cap in seconds; when it fires the partial cache is
+#                       still uploaded, then build() fails so buildrepo moves on
+# Unset (local `abuild`) -> a normal ccache-accelerated build, no tarball I/O.
+_ccache_tb_name="wpewebkit-kumo-$CARCH.tar.zst"
+_ccache_tb_legacy="$REPOS_DIR/.ccache"  # raw-ccache-on-sshfs from the old scheme
+
+# Content fingerprint of the object cache only, skipping ccache's constantly
+# rewritten bookkeeping (ccache.conf / stats / _tmp) so an all-hits run (no new
+# objects) is detected as unchanged and the upload is skipped.
+_ccache_fingerprint() {
+	[ -d "$CCACHE_DIR" ] && [ -n "$(ls -A "$CCACHE_DIR" 2>/dev/null)" ] || return 0
+	( cd "$CCACHE_DIR" && tar -cf - \
+		--exclude=./ccache.conf --exclude=./stats --exclude=./_tmp . 2>/dev/null ) \
+		| sha256sum | awk '{print $1}'
+}
+
+_ccache_restore() {
+	[ -n "$CCACHE_PERSIST_DIR" ] && [ -n "$CCACHE_DIR" ] || return 0
+	command -v ccache >/dev/null 2>&1 || return 0
+	mkdir -p "$CCACHE_DIR"
+	# Drop half-written tarballs left by a run that died mid-upload.
+	rm -f "$CCACHE_PERSIST_DIR"/"$_ccache_tb_name".tmp.* 2>/dev/null || true
+
+	local tb="$CCACHE_PERSIST_DIR/$_ccache_tb_name"
+	if [ -f "$tb" ]; then
+		msg "Restoring ccache from $tb"
+		tar --zstd -xf "$tb" -C "$CCACHE_DIR" || msg "WARNING: ccache restore failed, cold start"
+	elif [ -d "$_ccache_tb_legacy" ] && [ -n "$(ls -A "$_ccache_tb_legacy" 2>/dev/null)" ]; then
+		# One-time migration from the old raw-dir scheme. Stream-copy via a single
+		# tar pipe (one sequential read over the mount) instead of thousands of
+		# per-file SFTP ops, so salvaging the existing ~8k cached objects is
+		# minutes, not hours.
+		msg "Migrating legacy raw ccache dir -> $CCACHE_DIR (one-time)"
+		tar -cf - -C "$_ccache_tb_legacy" . 2>/dev/null \
+			| tar -xf - -C "$CCACHE_DIR" 2>/dev/null \
+			|| msg "WARNING: legacy migration failed, cold start"
+	else
+		msg "No remote ccache; cold start"
+	fi
+	_ccache_before=$(_ccache_fingerprint)
+}
+
+_ccache_save() {
+	[ -n "$CCACHE_PERSIST_DIR" ] && [ -n "$CCACHE_DIR" ] || return 0
+	command -v ccache >/dev/null 2>&1 || return 0
+	local after tb tmp
+	after=$(_ccache_fingerprint)
+	if [ "$after" = "$_ccache_before" ]; then
+		msg "ccache unchanged; skipping tarball upload"
+		return 0
+	fi
+	tb="$CCACHE_PERSIST_DIR/$_ccache_tb_name"
+	mkdir -p "$CCACHE_PERSIST_DIR"
+	rm -f "$CCACHE_PERSIST_DIR"/"$_ccache_tb_name".tmp.* 2>/dev/null || true
+	tmp="$tb.tmp.$$"
+	# Atomic publish: write a temp file then rename on the same filesystem (sshfs
+	# uses SFTP posix-rename, which atomically replaces). Stale temps from a crash
+	# are cleaned above on the next run.
+	if tar -cf "$tmp" --zstd \
+		--exclude=./ccache.conf --exclude=./stats --exclude=./_tmp \
+		-C "$CCACHE_DIR" .; then
+		mv -f "$tmp" "$tb"
+		msg "ccache uploaded -> $tb"
+		# Best-effort: retire the legacy raw dir once the tarball supersedes it.
+		[ -d "$_ccache_tb_legacy" ] && rm -rf "$_ccache_tb_legacy" 2>/dev/null || true
+	else
+		msg "WARNING: ccache upload failed"
+		rm -f "$tmp"
+	fi
+}
+
 build() {
 	# Upstream prefers Clang; matches Alpine's webkit2gtk aport and roughly
 	# halves the size of the debug symbols.
@@ -153,17 +240,12 @@ build() {
 			;;
 	esac
 
-	# Route compiles through ccache when it is available so CI builds are
-	# resumable: abuild always starts from a clean build/ dir, but ccache
-	# replays previously-compiled objects from $CCACHE_DIR, which in CI lives
-	# on the persistent sshfs mount. A run that times out mid-build thus
-	# leaves a warm cache, and the next run finishes only the remainder.
 	local cmake_launcher_args=""
 	if command -v ccache >/dev/null 2>&1; then
-		cmake_launcher_args="
-			-DCMAKE_C_COMPILER_LAUNCHER=ccache
-			-DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-		"
+		cmake_launcher_args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+		# Pull the persisted cache onto this fast LOCAL dir before any compile,
+		# so hits don't round-trip over the slow remote mount.
+		_ccache_restore
 	fi
 
 	cmake -B build -G Ninja \
@@ -182,7 +264,27 @@ build() {
 		-DUSE_LIBBACKTRACE=OFF \
 		-DUSE_SYSTEM_SYSPROF_CAPTURE=OFF \
 		$cmake_launcher_args
-	cmake --build build
+
+	# Build under an inner time cap (CI sets CCACHE_BUILD_BUDGET). When it fires
+	# the partial cache is still uploaded below, then build() returns non-zero so
+	# buildrepo records the failure and moves on. The cap is well under the outer
+	# job limit, guaranteeing the upload always runs. Signal ninja directly (not
+	# `cmake --build`) so it tears down its own compile children; a SIGTERM to the
+	# cmake wrapper would orphan ninja + every compiler, which would keep mutating
+	# $CCACHE_DIR mid-upload. (ninja is on PATH whenever `-G Ninja` configured OK.)
+	local rc=0
+	if [ "${CCACHE_BUILD_BUDGET:-0}" -gt 0 ] 2>/dev/null && command -v ninja >/dev/null 2>&1; then
+		timeout "${CCACHE_BUILD_BUDGET}" ninja -C build || rc=$?
+	elif [ "${CCACHE_BUILD_BUDGET:-0}" -gt 0 ] 2>/dev/null; then
+		timeout "${CCACHE_BUILD_BUDGET}" cmake --build build || rc=$?
+	else
+		cmake --build build || rc=$?
+	fi
+
+	# Always upload, even on timeout (rc=124) -- this is what makes the build
+	# resumable. Skipped automatically if nothing new was compiled.
+	_ccache_save
+	return $rc
 }
 
 package() {

@@ -40,7 +40,7 @@ jobs:
           apk update || true
 
       - name: Install packages
-        run: apk add alpine-sdk lua-aports sshfs ccache
+        run: apk add alpine-sdk lua-aports sshfs ccache zstd
 
       - name: Add /home/ci/aports to git safe directories
         run: git config --global --add safe.directory /home/ci/aports
@@ -70,6 +70,7 @@ jobs:
           addgroup ci wheel
 
           install -d -g abuild -m 775 /var/cache/distfiles
+          install -d -o ci -g abuild -m 775 /tmp/ccache
           chown -R ci:abuild ./aports
 
           patch -d / -p 1 < aports/.github/workflows/files/abuild-sign.patch
@@ -94,10 +95,13 @@ jobs:
             fi
           done
 
-          # ccache lives on the persistent sshfs mount so a run that times out
-          # mid-build still leaves every object it finished in the cache; the
-          # next run replays them as hits and only compiles the remainder.
+          # During the build ccache uses a fast LOCAL dir (CCACHE_DIR=/tmp/ccache);
+          # the wpewebkit-kumo APKBUILD persists it as a tarball on the sshfs mount
+          # (CCACHE_PERSIST_DIR) before/after building, scoped to that package's
+          # build(). An inner time cap (CCACHE_BUILD_BUDGET) makes the upload run
+          # even on timeout, so a follow-up run resumes from the warm cache.
           su ci sh -c '
+            ccache -M 5G 2>/dev/null || true
             ccache -z 2>/dev/null || true
             # Live ccache visibility: print stats every 15 min so you can watch
             # hits/misses climb in the log while the build runs, instead of
@@ -117,12 +121,17 @@ jobs:
         env:
           # Write packages into the webroot (public/), which is disjoint from .secret/.
           REPODEST: ${{ env.REPOS_DIR }}/public/alpine/${{ env.BRANCH }}
-          # Persistent compiler cache for resumable builds. Sits next to the
-          # webroot on the sshfs share (NOT under public/, so it's never served).
-          # Raise if the share has room (watch `df $REPOS_DIR`); needs to hold a
-          # full WebKit build (~15-20G) for cross-run resumability to pay off.
-          CCACHE_DIR: ${{ env.REPOS_DIR }}/.ccache
-          CCACHE_MAXSIZE: 25G
+          # Fast LOCAL cache used during the build (so ~9.4k hits don't round-trip
+          # over sshfs); the APKBUILD persists it as a tarball on the mount below.
+          # A full WebKit cache is ~1-2G; 5G gives headroom on the runner disk.
+          CCACHE_DIR: /tmp/ccache
+          # Remote mount dir holding the persisted tarball (next to public/, never
+          # served). The APKBUILD only downloads/uploads when this is set.
+          CCACHE_PERSIST_DIR: ${{ env.REPOS_DIR }}/.ccache-tb
+          # Inner build cap (4h). The APKBUILD uploads the partial cache when it
+          # fires, then fails the build so buildrepo moves on. Well under GitHub's
+          # 6h job limit so the upload always completes.
+          CCACHE_BUILD_BUDGET: '14400'
 
       - name: Unmount remote FS
         if: ${{ always() }}
