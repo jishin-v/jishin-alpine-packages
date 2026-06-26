@@ -40,7 +40,7 @@ jobs:
           apk update || true
 
       - name: Install packages
-        run: apk add alpine-sdk lua-aports sshfs
+        run: apk add alpine-sdk lua-aports sshfs ccache
 
       - name: Add /home/ci/aports to git safe directories
         run: git config --global --add safe.directory /home/ci/aports
@@ -94,11 +94,35 @@ jobs:
             fi
           done
 
-          su ci sh -c 'buildrepo -d $REPODEST $@' -- $args
+          # ccache lives on the persistent sshfs mount so a run that times out
+          # mid-build still leaves every object it finished in the cache; the
+          # next run replays them as hits and only compiles the remainder.
+          su ci sh -c '
+            ccache -z 2>/dev/null || true
+            # Live ccache visibility: print stats every 15 min so you can watch
+            # hits/misses climb in the log while the build runs, instead of
+            # waiting for a whole (possibly 6h) run to see the final summary.
+            ( while sleep 900; do
+                echo "--- ccache stats @ $(date -u +%Y-%m-%dT%H:%M:%SZ) ---"
+                ccache -s 2>&1
+              done ) &
+            poll=$!
+            buildrepo -d $REPODEST $@
+            rc=$?
+            kill $poll 2>/dev/null || true
+            ccache -s
+            exit $rc
+          ' -- $args
         working-directory: /home/ci/aports
         env:
           # Write packages into the webroot (public/), which is disjoint from .secret/.
           REPODEST: ${{ env.REPOS_DIR }}/public/alpine/${{ env.BRANCH }}
+          # Persistent compiler cache for resumable builds. Sits next to the
+          # webroot on the sshfs share (NOT under public/, so it's never served).
+          # Raise if the share has room (watch `df $REPOS_DIR`); needs to hold a
+          # full WebKit build (~15-20G) for cross-run resumability to pay off.
+          CCACHE_DIR: ${{ env.REPOS_DIR }}/.ccache
+          CCACHE_MAXSIZE: 25G
 
       - name: Unmount remote FS
         if: ${{ always() }}

@@ -153,6 +153,19 @@ build() {
 			;;
 	esac
 
+	# Route compiles through ccache when it is available so CI builds are
+	# resumable: abuild always starts from a clean build/ dir, but ccache
+	# replays previously-compiled objects from $CCACHE_DIR, which in CI lives
+	# on the persistent sshfs mount. A run that times out mid-build thus
+	# leaves a warm cache, and the next run finishes only the remainder.
+	local cmake_launcher_args=""
+	if command -v ccache >/dev/null 2>&1; then
+		cmake_launcher_args="
+			-DCMAKE_C_COMPILER_LAUNCHER=ccache
+			-DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+		"
+	fi
+
 	cmake -B build -G Ninja \
 		-DPORT=WPE \
 		-DCMAKE_BUILD_TYPE=Release \
@@ -167,7 +180,8 @@ build() {
 		-DENABLE_SPEECH_SYNTHESIS=OFF \
 		-DENABLE_WPE_PLATFORM=ON \
 		-DUSE_LIBBACKTRACE=OFF \
-		-DUSE_SYSTEM_SYSPROF_CAPTURE=OFF
+		-DUSE_SYSTEM_SYSPROF_CAPTURE=OFF \
+		$cmake_launcher_args
 	cmake --build build
 }
 
