@@ -1,0 +1,138 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# charon — Wayland mobile maps & navigation application. Renders raster tiles
+# with Skia (compiled from source by the `skia-bindings` crate, since there is
+# no prebuilt for musl), does offline POI/address search via the bundled C++
+# `geocoder-nlp` library (which in turn statically compiles `libpostal`), and
+# offline routing via the pure-Rust `valhalla` HTTP client crate.
+#
+# Skia's build downloads its own source + syncs third-party deps over the
+# network from inside its build script, so this needs `options="net"` for the
+# build phase (not just prepare) in addition to `ninja`, `python3` and `git` on
+# PATH (the bundled `gn` ships with the Skia source tree).
+pkgname=charon
+pkgver=1.8.0
+pkgrel=0
+pkgdesc="Wayland mobile maps & navigation application"
+url="https://git.sr.ht/~undeadleech/charon"
+arch="aarch64 x86_64"
+license="GPL-3.0-only"
+# Functional runtime deps beyond what abuild's so: autoscan adds. The geocoder
+# / Skia / sqlite shared libs (kyotocabinet, libmarisa, sqlite-libs, freetype,
+# fontconfig, wayland-libs-*, libstdc++, etc.) are picked up automatically.
+# Optional, not enforced: modemmanager + dbus (GPS via ModemManager), polkit
+# (the in-tree rules/66-charon.rules.polkit grants the `catacomb` group access).
+depends="font-dejavu"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	clang-dev
+	gcc
+	g++
+	git
+	libstdc++-dev
+	ninja-build
+	python3
+	pkgconf
+	freetype-dev
+	fontconfig-dev
+	mesa-dev
+	wayland-dev
+	wayland-protocols
+	vulkan-headers
+	vulkan-loader-dev
+	libx11-dev
+	libxkbcommon-dev
+	openssl-dev
+	kyotocabinet-dev
+	sqlite-dev
+	libmarisa-dev
+	"
+# `net`: skia-bindings downloads the Skia source + runs `git-sync-deps` from
+# inside its build script during `cargo build`, so the build phase itself needs
+# network (cargo's --frozen does not sandbox build scripts).
+# `!check`: the only tests live in the geocoder crate and need prebuilt search
+# databases; not worth gating a DIY build on.
+options="net !check"
+# charon pins three git submodules which a source tarball does not contain.
+# Fetched as separate GitHub archives and relocated into the source tree in
+# prepare(). Pinned to the exact gitlinks charon v1.8.0 records.
+_geocoder_nlp_commit="56cbd6692a70855909580ab3166bfa23df41aa54"
+_libpostal_commit="25099c506612b34b23b1bfe286ca6321fcf06f35"
+_sqlite3pp_commit="5cf99ae80873d78b2c52296f51fda2f0d8b11e0d"
+source="
+	$pkgname-$pkgver.tar.gz::https://git.sr.ht/~undeadleech/charon/archive/v$pkgver.tar.gz
+	geocoder-nlp-$_geocoder_nlp_commit.tar.gz::https://github.com/chrisduerr/geocoder-nlp/archive/$_geocoder_nlp_commit.tar.gz
+	libpostal-$_libpostal_commit.tar.gz::https://github.com/openvenues/libpostal/archive/$_libpostal_commit.tar.gz
+	sqlite3pp-$_sqlite3pp_commit.tar.gz::https://github.com/rinigus/sqlite3pp/archive/$_sqlite3pp_commit.tar.gz
+	"
+builddir="$srcdir/charon-v$pkgver"
+
+prepare() {
+	default_prepare
+
+	# Populate the three git submodules (a `git archive` tarball records the
+	# gitlinks but not the submodule contents). sqlite3pp is nested inside
+	# geocoder-nlp's own thirdparty/ dir.
+	rm -rf "$builddir/geocoder_nlp_rs/geocoder-nlp"
+	cp -a "$srcdir/geocoder-nlp-$_geocoder_nlp_commit/." \
+		"$builddir/geocoder_nlp_rs/geocoder-nlp/"
+	rm -rf "$builddir/geocoder_nlp_rs/libpostal"
+	cp -a "$srcdir/libpostal-$_libpostal_commit/." \
+		"$builddir/geocoder_nlp_rs/libpostal/"
+	rm -rf "$builddir/geocoder_nlp_rs/geocoder-nlp/thirdparty/sqlite3pp"
+	cp -a "$srcdir/sqlite3pp-$_sqlite3pp_commit/." \
+		"$builddir/geocoder_nlp_rs/geocoder-nlp/thirdparty/sqlite3pp/"
+
+	# Alpine ships marisa-trie 0.2.6 (libmarisa-dev). charon's geocoder build
+	# script asserts pkg-config `marisa >= 0.3.1`, but the C++ it compiles
+	# (geocoder-nlp/src/{geocoder,postal}.cpp) only uses the stable marisa API
+	# (Agent::set_query, Trie::{predictive_search,load,clear}, key().id/ptr/
+	# length, marisa::Exception) that has been present since the 0.2.x series.
+	# Relax the version floor so the probe succeeds against 0.2.6.
+	sed -i 's/atleast_version("0.3.1")/atleast_version("0.2.6")/' \
+		"$builddir/geocoder_nlp_rs/build.rs"
+
+	# Populate the cargo cache for the host target (deterministic per
+	# Cargo.lock). CI builds natively per-arch.
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# Skia (and its bundled toolchain probes) prefer Clang; this also matches
+	# the mozjs/wpewebkit convention used elsewhere in this repo and sidesteps
+	# GCC's format-hardening fatal errors on some vendored C++.
+	export CC=clang
+	export CXX=clang++
+
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	# skia-bindings still reaches the network itself (its build script
+	# downloads Skia + runs git-sync-deps), which cargo's --offline does not
+	# sandbox -- that's why this aport uses options="net".
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/$pkgname "$pkgdir"/usr/bin/$pkgname
+
+	install -D -m644 charon.desktop \
+		"$pkgdir"/usr/share/applications/org.catacombing.charon.desktop
+	install -D -m644 logo.svg \
+		"$pkgdir"/usr/share/icons/hicolor/scalable/apps/Charon.svg
+
+	# Polkit rule granting the `catacomb` group GPS / compass access
+	# (ModemManager Location + iio-sensor-proxy). Harmless without polkit
+	# installed; upstream ships it under rules/.
+	install -D -m644 rules/66-charon.rules.polkit \
+		"$pkgdir"/usr/share/polkit-1/rules.d/66-charon.rules
+}
+
+sha512sums="
+bc8357f0f3375cd965b822a7cc2d79b10c94c640ea6764ba468c904de906cc363754602e87cce7cbbbb34d4ae5114aabd653f3881be069e7cedaecebdda17668  charon-1.8.0.tar.gz
+db1d6fb98610ef4e436b004c67a6a64c537fd309a685c59775a6d4ee324dbf509a42fc29f05c256166aa151b61c9b033c37dd4a6b7b95ae7b497e60131c48d48  geocoder-nlp-56cbd6692a70855909580ab3166bfa23df41aa54.tar.gz
+d52e3e3b6fb11b956a1dbe1f17c0146c5fdc6dded4b42af8634292ae804e75b5b063f7a65187cea893870843eab497b5305236f0f1161beb1ca975dd0f124064  libpostal-25099c506612b34b23b1bfe286ca6321fcf06f35.tar.gz
+aa79be161901ecf5f0cb8e8212d8f5150268383190b2a2a087e16819203a34e3a2158dc774c600efa70475d62dbe50c86c0fb4a89f37dab2f93b912dcb1af9a5  sqlite3pp-5cf99ae80873d78b2c52296f51fda2f0d8b11e0d.tar.gz
+"
