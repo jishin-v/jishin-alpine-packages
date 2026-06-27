@@ -291,6 +291,40 @@ config snippet; bake it into the APKBUILD or ship a `.cargo/config.toml`.)
    (the `/keep-going` commit-trailer already enables it).
 4. Local check tooling: `abuild -r` in an Alpine v3.24 container/chroot if available.
 
+### kumo build (Rust + Servo + mozjs) — DONE
+kumo (the Wayland browser, both WebKit/WPE and Servo engines) built green in
+CI after three missing-dependency fixes, each found by iterating directly on
+GitHub Actions (via `gh` + `gh run view --log`). The cargo release build
+(`mozjs` C++ via clang + full Servo Rust graph) finished in ~43 min and packaged
+`kumo-1.8.2-r0.apk` (90.7 MB) — well under the 6h limit, so **no sccache /
+resumability was needed** for kumo (unlike wpewebkit-kumo).
+
+The three fixes (all in `incubating/kumo/APKBUILD`):
+1. **`bash` makedepend** — mozjs_sys's `makefile.cargo` sets `SHELL := bash`
+   (its recipes use `[[ ... ]]`). Alpine base ships only busybox ash, so
+   `gmake` died with `Error 127` on the first recipe line. (Verified against
+   the exact mozjs_sys 140.12.0-0 crate: bash is the *only* bash reference,
+   configure is python3-based so no m4/perl/autoconf, and `[features]` only
+   defines `crown` so `--disable-jit`/`--without-intl-api` are always set → no
+   nasm/yasm/perl.)
+2. **`export CC=clang CXX=clang++` in build()** — mozjs was compiling with GCC
+   (`/usr/bin/c++`), which errors out on mozjs's format-hardening flags:
+   `cc1plus: error: '-Wformat-security' ignored without '-Wformat'
+   [-Werror=format-security]` (failing `xsum.o`). Clang handles it fine and is
+   the upstream mozjs/Servo compiler. Alpine's own `community/mozjs` aport works
+   around the identical problem with `export CC=clang CXX=clang++`.
+3. **`clang-dev` makedepend** — after the C++ compile succeeds, bindgen (used by
+   mozjs_sys and a servo dep to generate Rust FFI bindings) panicked with
+   `Unable to find libclang ... (invalid: [])`. The `clang` binary is installed
+   but `libclang.so` lives under the versioned `/usr/lib/llvmNN/lib/` dir which
+   bindgen doesn't scan; `clang-dev` puts `/usr/lib/libclang.so` in a standard
+   path.
+
+Two earlier trivial fixes preceded these: the `source=` filename was renamed
+with the `$pkgname-$pkgver.tar.gz::url` idiom (checksum mismatch), and
+wpewebkit-kumo's `libintl` link fix (separate section above) had to land first
+so `wpewebkit-kumo-dev` existed for kumo's makedepends.
+
 ## Things deliberately deferred
 - GPG signature verification of the WPE fork source (catacomb uses `validpgpkeys`
   `4DAA67A9EA8B91FCC15B699C85CDAE3C164BA7B4`); skip for DIY unless requested —
