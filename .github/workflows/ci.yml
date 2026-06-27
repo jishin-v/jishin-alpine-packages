@@ -49,9 +49,17 @@ jobs:
         - /tmp:/tmp
     steps:
       - name: Checkout aports repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 10
+        # GitHub's JavaScript actions (actions/checkout) only run inside
+        # Alpine/musl containers on x86_64 runners; on arm64 they hard-fail
+        # with "JavaScript Actions in Alpine containers are only supported on
+        # x64 Linux runners". Do a plain `git clone` so both arches share one
+        # code path. alpine:3.24's base image already ships /etc/apk/repositories
+        # pointed at dl-cdn, so `apk add git` works here, before we (re)configure
+        # our own repos below. The repo is public, so no token is required.
+        run: |
+          apk add --no-cache git
+          git clone --quiet --branch "$GITHUB_REF_NAME" --depth 10 \
+            "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" /home/ci/aports
 
       - name: Copy packager key to /etc/apk/keys
         run: cp .keys/$PACKAGER_KEYNAME.pub /etc/apk/keys/
