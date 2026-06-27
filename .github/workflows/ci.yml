@@ -13,7 +13,34 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Native builds per arch: each runner pulls the matching alpine:3.24 image
+    # (amd64 on the x86_64 runner, arm64 on the ARM runner), so $CARCH matches
+    # the host and buildrepo writes each arch into its own
+    # $REPODEST/<repo>/<arch>/ dir with its own signed APKINDEX. noarch aports
+    # (e.g. jishin-dummy) get built once per arch into that arch's dir, which is
+    # the standard Alpine layout apk expects.
+    #
+    # fail-fast stays OFF: the aarch64 wpewebkit-kumo build is a multi-run,
+    # ccache-resumable cold start (see its APKBUILD) and will keep failing until
+    # it converges -- we must not abort x86_64 over it.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # Serialize same-arch runs per branch. Two concurrent runs of the SAME arch
+    # would race on the same $REPODEST/<repo>/<arch>/ apks + APKINDEX and on the
+    # same wpewebkit-kumo-<arch>.tar.zst ccache tarball, corrupting both. The two
+    # arches use disjoint paths, so they may safely build in parallel.
+    # cancel-in-progress keeps iteration fast (a new push supersedes the stale
+    # same-arch build); the ccache tarball still advances across completed runs.
+    concurrency:
+      group: ci-${{ matrix.arch }}-${{ github.ref }}
+      cancel-in-progress: true
     container:
       image: alpine:3.24
       options: --privileged --device /dev/fuse
@@ -22,7 +49,7 @@ jobs:
         - /tmp:/tmp
     steps:
       - name: Checkout aports repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 10
 
