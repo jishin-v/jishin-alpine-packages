@@ -10,10 +10,11 @@
 # The alarm sound (alarm.flac) and all GL bindings are embedded into the
 # binaries at compile time, so there is no /usr/share data dir at runtime.
 #
-# Skia's build downloads its own source + syncs third-party deps over the
-# network from inside its build script, so this needs `options="net"` for the
-# build phase (not just prepare) in addition to `ninja`, `python3` and `git`
-# on PATH (the bundled `gn` ships with the Skia source tree).
+# Skia's build downloads its own source (via the `curl` binary) + syncs
+# third-party deps over the network from inside its build script, so this needs
+# `options="net"` for the build phase (not just prepare) plus `curl`, `ninja`,
+# `python3` and `git` on PATH (the bundled `gn` ships with the Skia source
+# tree). gcc/g++/libstdc++-dev come from the auto-added `build-base`.
 pkgname=aevum
 pkgver=2.3.1
 pkgrel=0
@@ -29,13 +30,11 @@ depends="dbus font-dejavu"
 makedepends="
 	cargo
 	cargo-auditable
+	curl
 	rust
 	clang
 	clang-dev
-	gcc
-	g++
 	git
-	libstdc++-dev
 	ninja-build
 	python3
 	pkgconf
@@ -51,9 +50,10 @@ makedepends="
 	alsa-lib-dev
 	pulseaudio-dev
 	"
-# `net`: skia-bindings downloads the Skia source + runs `git-sync-deps` from
-# inside its build script during `cargo build`, so the build phase itself needs
-# network (cargo's --frozen does not sandbox build scripts).
+# `net`: skia-bindings shells out to `curl` to download the Skia source, then
+# runs `git-sync-deps`, from inside its build script during `cargo build`, so
+# the build phase itself needs network (cargo's --frozen does not sandbox build
+# scripts).
 # `!check`: the GUI crate's tests need a Wayland compositor; rezz/cli unit
 # tests could in principle run, but gating a DIY build on them isn't worth it.
 options="net !check"

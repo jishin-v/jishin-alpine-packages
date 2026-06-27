@@ -7,10 +7,11 @@
 # `geocoder-nlp` library (which in turn statically compiles `libpostal`), and
 # offline routing via the pure-Rust `valhalla` HTTP client crate.
 #
-# Skia's build downloads its own source + syncs third-party deps over the
-# network from inside its build script, so this needs `options="net"` for the
-# build phase (not just prepare) in addition to `ninja`, `python3` and `git` on
-# PATH (the bundled `gn` ships with the Skia source tree).
+# Skia's build downloads its own source (via the `curl` binary) + syncs
+# third-party deps over the network from inside its build script, so this needs
+# `options="net"` for the build phase (not just prepare) plus `curl`, `ninja`,
+# `python3` and `git` on PATH (the bundled `gn` ships with the Skia source
+# tree). gcc/g++/libstdc++-dev come from the auto-added `build-base`.
 pkgname=charon
 pkgver=1.8.0
 pkgrel=0
@@ -27,13 +28,11 @@ depends="font-dejavu"
 makedepends="
 	cargo
 	cargo-auditable
+	curl
 	rust
 	clang
 	clang-dev
-	gcc
-	g++
 	git
-	libstdc++-dev
 	ninja-build
 	python3
 	pkgconf
@@ -51,9 +50,10 @@ makedepends="
 	sqlite-dev
 	libmarisa-dev
 	"
-# `net`: skia-bindings downloads the Skia source + runs `git-sync-deps` from
-# inside its build script during `cargo build`, so the build phase itself needs
-# network (cargo's --frozen does not sandbox build scripts).
+# `net`: skia-bindings shells out to `curl` to download the Skia source, then
+# runs `git-sync-deps`, from inside its build script during `cargo build`, so
+# the build phase itself needs network (cargo's --frozen does not sandbox build
+# scripts).
 # `!check`: the only tests live in the geocoder crate and need prebuilt search
 # databases; not worth gating a DIY build on.
 options="net !check"
