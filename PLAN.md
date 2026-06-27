@@ -325,6 +325,65 @@ with the `$pkgname-$pkgver.tar.gz::url` idiom (checksum mismatch), and
 wpewebkit-kumo's `libintl` link fix (separate section above) had to land first
 so `wpewebkit-kumo-dev` existed for kumo's makedepends.
 
+## arm64 / dual-arch CI
+Both aports already declared `arch="aarch64 x86_64"`; the gap was the CI only
+built x86_64. Done across three commits on `staging` (`22acaee`, `1f25aad`,
+`add61d6`):
+
+- **Matrix + native builds.** `.github/workflows/ci.yml` now runs a 2-way arch
+  matrix: `x86_64 -> ubuntu-latest`, `aarch64 -> ubuntu-24.04-arm` (GitHub's free
+  public ARM64 runner). Each runner pulls the matching `alpine:3.24` image
+  (amd64 / arm64), so `$CARCH` matches the host. `fail-fast: false` because the
+  aarch64 wpewebkit-kumo build is a multi-run ccache-resumable cold start and
+  will keep failing until it converges -- we must not abort x86_64 over it.
+
+- **`actions/checkout` had to go (arm64).** It's a JavaScript action, and
+  GitHub only runs JS actions inside Alpine/musl containers on **x86_64**
+  runners; the aarch64 job died at checkout with `JavaScript Actions in Alpine
+  containers are only supported on x64 Linux runners`. Replaced with a plain
+  `git clone --branch "$GITHUB_REF_NAME" --depth 10 … /home/ci/aports` step
+  (both arches share the one path; `apk add git` works on the base image's
+  dl-cdn repos; the repo is public so no token). Also clears the Node-20
+  deprecation warning.
+
+- **Repo format needed no change.** `buildrepo`/`abuild` already write the
+  standard per-arch layout: apks + a signed `APKINDEX.tar.gz` per
+  `$REPODEST/<repo>/<arch>/`. The two arch jobs write **disjoint** dirs, so
+  they build in parallel safely. `noarch` aports (jishin-dummy) get built once
+  per arch into each arch's dir -- also standard (that's how Alpine mirrors
+  ship fonts/docs). abuild resolves build-deps from the **local sshfs-mounted
+  `$REPODEST`**, not the HTTP URL, so the kumo->wpewebkit-kumo-dev dependency
+  resolves within a single arch run.
+
+- **ccache was almost already dual-arch-safe.** The persisted tarball is named
+  `wpewebkit-kumo-$CARCH.tar.zst`, so x86_64 and aarch64 get separate tarballs,
+  and each arch's runner has its own fresh local `CCACHE_DIR`. The one shared
+  path was the one-time legacy migration from the old raw-`/.ccache`-on-sshfs
+  scheme -- that dir only ever held **x86_64** objects, so the first aarch64 run
+  would have inherited them into the aarch64 tarball. Gated that `elif` to
+  `CARCH=x86_64` (commit `22acaee`); aarch64 now cold-starts cleanly.
+
+- **Per-arch concurrency.** Added `concurrency: { group: ci-<arch>-<ref>,
+  cancel-in-progress: true }`. Two concurrent runs of the **same** arch would
+  race on the same `$REPODEST/<repo>/<arch>/` apks + APKINDEX and on the same
+  `wpewebkit-kumo-<arch>.tar.zst` tarball, corrupting both -- a latent risk
+  even single-arch that the long WebKit builds make likely while iterating. The
+  two arches are separate groups, so they still build in parallel.
+
+**Status:** x86_64 job still green (builds nothing now -- all published).
+aarch64 gets past checkout/mount/prepare and into the WebKit compile; the first
+run cold-starts and is expected to hit the 4h inner cap, upload a partial
+`wpewebkit-kumo-aarch64.tar.zst`, and fail, then converge over the next few
+pushes/runs exactly like x86_64 did.
+
+**Pre-existing, out of scope (noting it):** the published HTTP repo returns
+`HTTP 403` for `/alpine/v3.24/incubating/<arch>/APKINDEX.tar.gz` *even from
+inside CI* (`apk update` warns and proceeds because abuild uses the local
+mount). So clients currently can't `apk add` these packages over HTTP. That's
+a server-side nginx/perms problem on `alpine.packages.jishin.emunest.net`, not
+a format or arm64 issue -- it affects both arches equally and is orthogonal to
+this change.
+
 ## Things deliberately deferred
 - GPG signature verification of the WPE fork source (catacomb uses `validpgpkeys`
   `4DAA67A9EA8B91FCC15B699C85CDAE3C164BA7B4`); skip for DIY unless requested —
