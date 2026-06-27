@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+# OpenRC service for `rezz`, the D-Bus RTC alarm daemon that `aevum` /
+# `aevum-cli` talk to. Upstream ships a systemd unit (Type=dbus,
+# Restart=always); this is the Alpine/OpenRC equivalent. rezz runs as a
+# single-threaded tokio foreground process that acquires the
+# org.catacombing.rezz bus name, so command_background=true lets openrc-run
+# supervise it with a pidfile.
+name="rezz"
+description="D-Bus RTC wake alarm daemon"
+command="/usr/bin/rezz"
+command_background=true
+pidfile="/run/rezz.pid"
+output_log="/var/log/rezz.log"
+error_log="/var/log/rezz.log"
+
+depend() {
+	need dbus
+	after bootmisc
+}

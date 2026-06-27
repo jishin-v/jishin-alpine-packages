@@ -1,0 +1,112 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# aevum — Wayland mobile alarm clock. The workspace builds three binaries:
+#   * aevum      — the GUI (uses Skia, compiled from source by skia-bindings,
+#                  since there is no prebuilt for musl)
+#   * aevum-cli  — command-line client for the alarm database
+#   * rezz       — root D-Bus system daemon that programs the RTC wake alarm
+#                  across suspend/reboot (the GUI/CLI are its clients)
+# The alarm sound (alarm.flac) and all GL bindings are embedded into the
+# binaries at compile time, so there is no /usr/share data dir at runtime.
+#
+# Skia's build downloads its own source + syncs third-party deps over the
+# network from inside its build script, so this needs `options="net"` for the
+# build phase (not just prepare) in addition to `ninja`, `python3` and `git`
+# on PATH (the bundled `gn` ships with the Skia source tree).
+pkgname=aevum
+pkgver=2.3.1
+pkgrel=0
+pkgdesc="Wayland mobile alarm clock (GUI + CLI + rezz RTC daemon)"
+url="https://git.sr.ht/~undeadleech/aevum"
+arch="aarch64 x86_64"
+license="GPL-3.0-only"
+# Functional runtime deps beyond what abuild's so: autoscan adds. The Skia /
+# audio / wayland shared libs (freetype, fontconfig, mesa, wayland-libs-*,
+# libpulse, alsa-lib, libstdc++, etc.) are picked up automatically. `dbus` is
+# required because rezz is a system bus service (it owns org.catacombing.rezz).
+depends="dbus font-dejavu"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	clang-dev
+	gcc
+	g++
+	git
+	libstdc++-dev
+	ninja-build
+	python3
+	pkgconf
+	freetype-dev
+	fontconfig-dev
+	mesa-dev
+	wayland-dev
+	wayland-protocols
+	vulkan-headers
+	vulkan-loader-dev
+	libx11-dev
+	libxkbcommon-dev
+	alsa-lib-dev
+	pulseaudio-dev
+	"
+# `net`: skia-bindings downloads the Skia source + runs `git-sync-deps` from
+# inside its build script during `cargo build`, so the build phase itself needs
+# network (cargo's --frozen does not sandbox build scripts).
+# `!check`: the GUI crate's tests need a Wayland compositor; rezz/cli unit
+# tests could in principle run, but gating a DIY build on them isn't worth it.
+options="net !check"
+source="
+	$pkgname-$pkgver.tar.gz::https://git.sr.ht/~undeadleech/aevum/archive/v$pkgver.tar.gz
+	rezz.initd
+	"
+builddir="$srcdir/aevum-v$pkgver"
+
+prepare() {
+	default_prepare
+	# Populate the cargo cache for the host target (deterministic per
+	# Cargo.lock). CI builds natively per-arch.
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# Skia (and its bundled toolchain probes) prefer Clang; this also matches
+	# the convention used elsewhere in this repo and sidesteps GCC's
+	# format-hardening fatal errors on some vendored C++.
+	export CC=clang
+	export CXX=clang++
+
+	# Building at the workspace root compiles every member (aevum, aevum-cli,
+	# rezz, and the alarm lib), producing all three binaries in target/release.
+	# --frozen = --locked + --offline; skia-bindings still reaches the network
+	# itself (its build script downloads Skia + runs git-sync-deps), which
+	# cargo's --offline does not sandbox -- hence options="net".
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/aevum "$pkgdir"/usr/bin/aevum
+	install -D -m755 target/release/aevum-cli "$pkgdir"/usr/bin/aevum-cli
+	install -D -m755 target/release/rezz "$pkgdir"/usr/bin/rezz
+
+	install -D -m644 Aevum.desktop \
+		"$pkgdir"/usr/share/applications/org.catacombing.aevum.desktop
+	install -D -m644 logo.svg \
+		"$pkgdir"/usr/share/icons/hicolor/scalable/apps/Aevum.svg
+
+	# D-Bus system bus policy: lets rezz (running as root) own the
+	# org.catacombing.rezz name and lets any client talk to it. Required for
+	# the daemon to function; upstream ships it under rezz/.
+	install -D -m644 rezz/org.catacombing.rezz.conf \
+		"$pkgdir"/usr/share/dbus-1/system.d/org.catacombing.rezz.conf
+
+	# OpenRC service for rezz (upstream ships a systemd unit, useless on
+	# Alpine). rc-update add rezz default; rc-service rezz start.
+	install -D -m755 "$srcdir"/rezz.initd "$pkgdir"/etc/init.d/rezz
+}
+
+sha512sums="
+51df89e4b022b0bfefaa8bba12f353e87c0bde7f773dd6c846fa28b9660ef158311a1617277fd8a5dab807ba4978078e210c08f18787f53c0321e8ea1a1d7a2e  aevum-2.3.1.tar.gz
+83a454f549aa046c3254e24acc971cc6aa2036f9fa092d6a530161aaa2a90492d503d55abdc773ab27adc33be37368da7226af4ea9419a006bb9a9e05ba0a2de  rezz.initd
+"
