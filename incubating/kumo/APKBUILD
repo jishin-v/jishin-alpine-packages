@@ -57,7 +57,7 @@ makedepends="
 # them needs a Wayland compositor for the rest of the binary and isn't worth
 # gating a DIY build on.
 options="net !check"
-source="https://git.sr.ht/~undeadleech/kumo/archive/v$pkgver.tar.gz"
+source="$pkgname-$pkgver.tar.gz::https://git.sr.ht/~undeadleech/kumo/archive/v$pkgver.tar.gz"
 builddir="$srcdir/kumo-v$pkgver"
 
 prepare() {
