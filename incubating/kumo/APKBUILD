@@ -27,7 +27,11 @@ depends="
 	gst-libav
 	font-dejavu
 	"
+# bash: required by mozjs_sys's makefile.cargo, which sets `SHELL := bash`
+# (SpiderMonkey/Servo's JS-engine dep). Without it, gmake fails with
+# `Error 127` on the first `[[ ... ]]` recipe line under busybox ash.
 makedepends="
+	bash
 	cargo
 	cargo-auditable
 	rust
