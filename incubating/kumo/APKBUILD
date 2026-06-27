@@ -72,6 +72,18 @@ prepare() {
 }
 
 build() {
+	# mozjs (SpiderMonkey, pulled in by servo) MUST be built with clang, not
+	# gcc. GCC dies on mozjs's format-hardening flags --
+	#   cc1plus: error: '-Wformat-security' ignored without '-Wformat'
+	#            [-Werror=format-security]
+	# -- failing the xsum.o compile. Alpine's own community/mozjs aport works
+	# around this identically by exporting CC=clang/CXX=clang++. mozjs_sys's
+	# build.rs honours CC/CXX (and the cc-crate target-prefixed variants).
+	# clang/llvm are already makedepends; this also matches what servo upstream
+	# and wpewebkit-kumo use, so it's the natural compiler here.
+	export CC=clang
+	export CXX=clang++
+
 	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
 	# Default features enable both engines (servo + webkit).
 	cargo auditable build --frozen --release
