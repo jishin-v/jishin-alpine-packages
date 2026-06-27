@@ -84,6 +84,7 @@ makedepends="
 	clang
 	cmake
 	flex
+	gettext-dev
 	gobject-introspection-dev
 	gperf
 	gst-plugins-bad-dev
@@ -216,6 +217,20 @@ _ccache_save() {
 		msg "WARNING: ccache upload failed"
 		rm -f "$tmp"
 	fi
+}
+
+prepare() {
+	default_prepare
+	# Upstream bug: the WPE port links libintl only under `if (ANDROID)`
+	# (Source/WebKit/PlatformWPE.cmake). On glibc that's fine (gettext lives in
+	# libc) and on Android they link it explicitly, but on musl neither holds --
+	# gettext is a separate lib AND intl isn't linked, so the final link of
+	# libWPEWebKit dies with `undefined symbol: libintl_bindtextdomain` (the GNU
+	# libintl.h header rewrites bindtextdomain -> libintl_bindtextdomain).
+	# Link intl unconditionally; libintl.so is provided by the gettext-dev
+	# makedepend, and Alpine's libintl-1.0 exports the libintl_* symbols.
+	sed -i 's/^if (ANDROID)$/if (TRUE)/' \
+		"$builddir/Source/WebKit/PlatformWPE.cmake"
 }
 
 build() {

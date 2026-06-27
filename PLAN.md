@@ -79,6 +79,26 @@ build now converges: a timed-out run caches ~6k objects, the next replays those 
 minutes and finishes. If the remote is ever flaky, the whole tarball dance is
 gated on `CCACHE_PERSIST_DIR` being set, so local `abuild` is unaffected.
 
+### wpewebkit-kumo final-link: undefined libintl_bindtextdomain (musl) — DONE
+The resumable build got to `[9419/9438]` then the final link of
+`libWPEWebKit-2.0.so` died:
+  ld.lld: error: undefined symbol: libintl_bindtextdomain / libintl_bind_textdomain_codeset
+Root cause is an **upstream WPE-port bug**: `Source/WebKit/PlatformWPE.cmake`
+links libintl only under `if (ANDROID)` — on glibc gettext lives in libc (so
+Alpine's own GTK `webkit2gtk` builds fine) and on Android they link it
+explicitly, but on **musl** neither holds, so the GLib API's `bindtextdomain`
+calls (rewritten to `libintl_*` by the GNU `libintl.h` header) go unresolved.
+Verified against the actual Alpine 3.24 packages: `gettext-dev` provides
+`/usr/lib/libintl.so` (dev symlink) + the mangling `libintl.h`, and `libintl-1.0`
+(`libintl.so.8`) exports both `libintl_bindtextdomain` and the bare names
+(checked with `grep -a` on the extracted `.so`). `musl-libintl` is header-only
+and `gettext-tiny` is tools/m4-only on 3.24, so `gettext-dev` is the provider.
+Fix (in the APKBUILD): `gettext-dev` in makedepends + a `prepare()` one-liner
+`sed 's/^if (ANDROID)$/if (TRUE)/' Source/WebKit/PlatformWPE.cmake` to link
+`intl` unconditionally. (`WPEPlatform` is the lower-level platform lib and
+doesn't call `bindtextdomain`, so it's unaffected; only the `WebKit` framework
+target needed the fix.)
+
 ### Source hosting (wpewebkit-kumo: RESOLVED)
 The `chrisduerr/WebKit` fork's tarball is committed to the **`_bulk` LFS repo**
 (`jishin-v/jishin-alpine-repository-bulk`, branch `master`) and the APKBUILD `source=`
