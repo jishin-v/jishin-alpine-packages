@@ -47,6 +47,7 @@ makedepends="
 	libx11-dev
 	libxkbcommon-dev
 	openssl-dev
+	boost-dev
 	kyotocabinet-dev
 	sqlite-dev
 	libmarisa-dev
@@ -103,11 +104,21 @@ prepare() {
 }
 
 build() {
-	# Skia (and its bundled toolchain probes) prefer Clang; this also matches
-	# the mozjs/wpewebkit convention used elsewhere in this repo and sidesteps
-	# GCC's format-hardening fatal errors on some vendored C++.
-	export CC=clang
-	export CXX=clang++
+	# Use Clang (matches the rest of this repo; avoids GCC format-hardening
+	# fatal errors on some vendored C++). skia-bindings derives the build target
+	# from CC, but our *-alpine-linux-musl triple has vendor "alpine", which its
+	# alpine.rs arm (vendor "unknown") does not match, so it falls to linux.rs.
+	# That shortens --target to *-linux-musl (dropping "alpine") and, since GCC
+	# installs libstdc++ arch headers under
+	# /usr/include/c++/<ver>/<arch>-alpine-linux-musl/, clang then can't find
+	# bits/c++config.h (alpine.rs's own -I paths are wrong too: it probes the
+	# version with `g++ -dumpversion`, which returns only the major "15"). Work
+	# around it by adding the real stdlib include dirs to the compiler via
+	# -isystem -- skia passes CC/CXX straight through (it does not read
+	# CFLAGS/CXXFLAGS), and the cc/cxx crates inherit them too.
+	_gccinc="/usr/include/c++/$(g++ -dumpfullversion)"
+	export CC="clang -isystem $_gccinc -isystem $_gccinc/$CTARGET"
+	export CXX="clang++ -isystem $_gccinc -isystem $_gccinc/$CTARGET"
 
 	# rust-skia's source tarball ships no bin/gn (only a fetch-gn script that
 	# would pull a glibc binary that can't exec on musl), so point skia-bindings
