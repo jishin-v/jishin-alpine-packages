@@ -35,6 +35,7 @@ makedepends="
 	clang
 	clang-dev
 	git
+	gn
 	ninja-build
 	python3
 	pkgconf
@@ -76,6 +77,12 @@ build() {
 	# format-hardening fatal errors on some vendored C++.
 	export CC=clang
 	export CXX=clang++
+
+	# rust-skia's source tarball ships no bin/gn (only a fetch-gn script that
+	# would pull a glibc binary that can't exec on musl), so point skia-bindings
+	# at Alpine's musl-native `gn` via SKIA_GN_COMMAND (overrides its default
+	# <skia-source>/bin/gn path, which does not exist).
+	export SKIA_GN_COMMAND=gn
 
 	# Building at the workspace root compiles every member (aevum, aevum-cli,
 	# rezz, and the alarm lib), producing all three binaries in target/release.
