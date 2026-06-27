@@ -30,6 +30,10 @@ depends="
 # bash: required by mozjs_sys's makefile.cargo, which sets `SHELL := bash`
 # (SpiderMonkey/Servo's JS-engine dep). Without it, gmake fails with
 # `Error 127` on the first `[[ ... ]]` recipe line under busybox ash.
+# clang-dev: provides libclang.so in /usr/lib so bindgen (used by mozjs_sys
+# and by a servo dep) can load it to generate FFI bindings. The runtime
+# libclang lives under /usr/lib/llvmNN/lib/, which bindgen doesn't scan;
+# clang-dev's dev symlink lands in a standard path.
 makedepends="
 	bash
 	cargo
@@ -54,6 +58,7 @@ makedepends="
 	python3
 	cmake
 	clang
+	clang-dev
 	llvm
 	"
 # `net` lets abuild reach crates.io + the git forks during `cargo fetch`.
