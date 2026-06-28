@@ -391,3 +391,123 @@ this change.
 - Splitting gst plugins into `-media` subpackage; just `depends=` them for now.
 - `-doc`/`-dbg` subpackage polish.
 - Backporting to v3.23 (not wanted; we moved to v3.24).
+
+---
+
+# Plan: package `charon` & `aevum`
+
+Goal: ship two more `~undeadleech` Wayland mobile apps under `incubating/`, on
+the `v3.24` branch. Both are Rust + [Skia](https://github.com/rust-skia/rust-skia)
+apps (like the rest of the catacomb UI), built with the same `cargo fetch --locked`
++ `cargo auditable build --frozen --release` idiom this repo uses for `kumo`.
+
+**Status: DONE.** `charon-1.8.0-r0` (37.8 MB x86_64 / 36.0 MB aarch64) and
+`aevum-2.3.1-r0` (22.3 MB x86_64 / 21.6 MB aarch64) build green in CI and are
+published for both arches. The interesting parts were all Skia-on-musl and the
+C++ libvalhalla build; documented below so the fixes aren't inscrutable later.
+
+## aevum (alarm clock — the simple one)
+- sourcehut tarball `https://git.sr.ht/~undeadleech/aevum/archive/v2.3.1.tar.gz`,
+  extracts to `aevum-v2.3.1`. License `GPL-3.0-only`.
+- Workspace builds three binaries: `aevum` (GUI), `aevum-cli`, and `rezz` (a root
+  D-Bus system daemon — `Builder::system()`, owns `org.catacombing.rezz` — that
+  programs the RTC wake alarm across suspend/reboot; the GUI/CLI are its clients).
+  `alarm.flac` is `include_bytes!`-ed, so no runtime data dir.
+- `depends="dbus font-dejavu"`; the rest (Skia/freetype/fontconfig/wayland/
+  libpulse/alsa-lib/libstdc++ .so deps) is added by abuild's autoscan. `dbus` is
+  listed because rezz is a system-bus service.
+- Ships: the upstream D-Bus policy (`rezz/org.catacombing.rezz.conf` →
+  `/usr/share/dbus-1/system.d/`) plus an OpenRC init script `rezz.initd`
+  (authored here; upstream only ships a useless-on-Alpine systemd unit).
+- **Build gotcha:** `cargo build` from a workspace **root** only builds the root
+  package + its deps. `aevum-cli` lives in the standalone `cli/` member (not a
+dep of `aevum`), so it was never produced and `package()` died on
+  `install: can't stat 'target/release/aevum-cli'`. Fix: `cargo auditable build
+  --frozen --release --workspace`.
+
+## charon (maps & navigation — the heavy one)
+- sourcehut tarball + **three git submodules** fetched as separate GitHub archive
+  tarballs and relocated in `prepare()` (a `git archive` tarball records gitlinks
+  but no submodule contents), pinned to the exact gitlinks charon v1.8.0 records:
+  - `geocoder_nlp_rs/geocoder-nlp`        ← chrisduerr/geocoder-nlp @ `56cbd66…`
+  - `geocoder_nlp_rs/libpostal`           ← openvenues/libpostal @ `25099c5…`
+  - `geocoder_nlp_rs/geocoder-nlp/thirdparty/sqlite3pp` ← rinigus/sqlite3pp @ `5cf99ae…`
+- Pulls in the **C++ libvalhalla** routing engine (built from source by the
+  `valhalla` crate via cmake), the C++ `geocoder-nlp` (via `cxx`), and statically
+  compiles `libpostal` (C, via `cc`). Renders with Skia.
+- License `GPL-3.0-only`. `depends="font-dejavu"`; everything else via autoscan.
+- **marisa:** Alpine ships `libmarisa` 0.2.6 (`libmarisa-dev`, `pc:marisa=0.2.6`)
+  but charon's `geocoder_nlp_rs/build.rs` asserts `pkg-config marisa >= 0.3.1`.
+  The C++ it compiles only uses the stable marisa API (`Agent::set_query`,
+  `Trie::{predictive_search,load,clear}`, `key().id/ptr/length`, `Exception`)
+  present since 0.2.x, so `prepare()` sed's the floor to `0.2.6` rather than
+  adding a 4th aport.
+- **boost:** `geocoder-nlp/src/geocoder.cpp` `#include <boost/geometry.hpp>`
+  (header-only), so `boost-dev` is a real makedepend (the README's boost line is
+  not stale — `protobuf` is, charon never touches protobuf directly).
+
+## Skia-on-musl (shared by both, the main puzzle)
+rust-skia's `skia-bindings` builds Skia from source (no prebuilt for musl).
+Three separate fixes, each found by iterating on CI:
+
+1. **`curl` makedepend.** `skia-bindings` shells out to the `curl` binary
+   (`build_support/binary_cache/utils.rs: Command::new("curl")`) to download
+   the Skia source; abuild's chroot has no curl → panic "curl command error".
+2. **`gn` via `SKIA_GN_COMMAND`.** rust-skia's source tarball ships no `bin/gn`
+   (only `bin/fetch-gn`, which would pull a glibc binary that can't `execve` on
+   musl), so skia-bindings' default gn path doesn't exist → "gn error: NotFound".
+   Add Alpine's musl-native `gn` package and `export SKIA_GN_COMMAND=gn`. (ninja
+   is fine: skia uses the system `ninja` from PATH, not a bundled one.)
+3. **C++ stdlib headers via `-isystem` in CC/CXX.** skia-bindings derives the
+   build target from `CC`, but our `*-alpine-linux-musl` triple has vendor
+   `"alpine"`, which its `alpine.rs` arm (`(_, "unknown", "linux", Some("musl"))`)
+   does **not** match, so it falls to `linux.rs`. That (a) shortens `--target` to
+   `*-linux-musl` (dropping "alpine") and (b) adds no stdlib `-I` for native
+   builds — and since GCC installs libstdc++ arch headers under
+   `/usr/include/c++/<ver>/<arch>-alpine-linux-musl/`, clang then can't find
+   `bits/c++config.h`. `alpine.rs`'s own `-I` paths are wrong too: it probes the
+   version with `g++ -dumpversion`, which on GCC ≥7 returns only the major
+   (`"15"`, not `15.2.0`). skia doesn't read `CFLAGS`/`CXXFLAGS`, so the only
+   injection point is `CC`/`CXX`, which skia passes straight through:
+   ```sh
+   _gccinc="/usr/include/c++/$(g++ -dumpfullversion)"
+   export CC="clang -isystem $_gccinc -isystem $_gccinc/$CTARGET"
+   export CXX="clang++ -isystem $_gccinc -isystem $_gccinc/$CTARGET"
+   ```
+   This also covers the `cc`/`cxx` crates (libpostal, geocoder-nlp).
+
+## libvalhalla (charon only)
+The `valhalla` crate (0.6.38) bundles the C++ Valhalla source and builds it via
+`cmake-rs` with a minimal feature set (`ENABLE_{TOOLS,DATA_TOOLS,SERVICES,HTTP,
+PYTHON_BINDINGS,TESTS,GEOTIFF,LZ4}=OFF`, unity build). Makedepends added:
+`cmake`, `protobuf-dev`, `abseil-cpp-dev`, `zlib-dev` (boost/sqlite already
+present).
+
+- **`cmake` not installed** → `is cmake not installed?` (cmake isn't in
+  `build-base`; abuild only auto-adds `build-base`, which is gcc/g++/make/
+  libc-dev/etc., *not* cmake).
+- **`Protobuf_PROTOC_EXECUTABLE` missing.** Alpine's protobuf 31.1 ships only
+  *config-mode* cmake files (no legacy `FindProtobuf.cmake` module); its
+  `protobuf-module.cmake` never runs `find_program` for protoc, so
+  `find_package(Protobuf)` fails "missing: Protobuf_PROTOC_EXECUTABLE" even
+  though `/usr/bin/protoc` exists (provided by the `protoc` apk, pulled in
+  transitively by `protobuf-dev`). Fix: `prepare()` writes a toolchain file
+  ```cmake
+  set(Protobuf_PROTOC_EXECUTABLE /usr/bin/protoc CACHE FILEPATH "protoc")
+  ```
+  and `build()` does `export CMAKE_TOOLCHAIN_FILE="$srcdir/protoc-toolchain.cmake"`
+  — cmake-rs forwards `CMAKE_TOOLCHAIN_FILE` from the environment
+  (`lib.rs:451`), and the cache var satisfies the FPHSA check.
+
+## CI iteration notes
+- The first push of each aport carried the `/keep-going` commit trailer so
+  `buildrepo` attempted both packages in one run even when one failed; that also
+  makes the job conclusion report `success` regardless of per-package failures,
+  so during iteration you must grep the log for `>>> ERROR:` / `Create …apk`
+  rather than trusting the green check. (Removed once both were green.)
+- `g++`/`gcc`/`libstdc++-dev` are **not** listed as makedepends: abuild always
+  pulls in `build-base`, whose `g++` already brings `libstdc++-dev` (abuild lints
+  `g++ should not be in makedepends`).
+- Build times (native, GitHub-hosted 4-core runners): aevum ~30 min, charon
+  ~45 min (Skia + libvalhalla dominate). No ccache/resumability needed (well
+  under the 6h limit, unlike `wpewebkit-kumo`).
