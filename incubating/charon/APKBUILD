@@ -102,6 +102,14 @@ prepare() {
 	sed -i 's/atleast_version("0.3.1")/atleast_version("0.2.6")/' \
 		"$builddir/geocoder_nlp_rs/build.rs"
 
+	# Alpine's protobuf 31.1 ships only config-mode cmake files; its
+	# protobuf-module.cmake never runs find_program for protoc, so the `valhalla`
+	# crate's find_package(Protobuf) fails with "missing: Protobuf_PROTOC_EXECUTABLE"
+	# even though /usr/bin/protoc exists. Hand cmake the path via a toolchain file
+	# (the cmake crate forwards CMAKE_TOOLCHAIN_FILE from the environment).
+	printf 'set(Protobuf_PROTOC_EXECUTABLE /usr/bin/protoc CACHE FILEPATH "protoc")\n' \
+		> "$srcdir/protoc-toolchain.cmake"
+
 	# Populate the cargo cache for the host target (deterministic per
 	# Cargo.lock). CI builds natively per-arch.
 	cargo fetch --target="$CTARGET" --locked
@@ -129,6 +137,10 @@ build() {
 	# at Alpine's musl-native `gn` via SKIA_GN_COMMAND (overrides its default
 	# <skia-source>/bin/gn path, which does not exist).
 	export SKIA_GN_COMMAND=gn
+
+	# See prepare(): lets the `valhalla` crate's cmake build locate protoc on
+	# Alpine (protobuf config-mode doesn't expose Protobuf_PROTOC_EXECUTABLE).
+	export CMAKE_TOOLCHAIN_FILE="$srcdir/protoc-toolchain.cmake"
 
 	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
 	# skia-bindings still reaches the network itself (its build script
