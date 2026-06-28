@@ -32,6 +32,7 @@ makedepends="
 	rust
 	clang
 	clang-dev
+	cmake
 	git
 	gn
 	ninja-build
@@ -51,6 +52,9 @@ makedepends="
 	kyotocabinet-dev
 	sqlite-dev
 	libmarisa-dev
+	abseil-cpp-dev
+	protobuf-dev
+	zlib-dev
 	"
 # `net`: skia-bindings shells out to `curl` to download the Skia source, then
 # runs `git-sync-deps`, from inside its build script during `cargo build`, so

@@ -94,12 +94,14 @@ build() {
 	# <skia-source>/bin/gn path, which does not exist).
 	export SKIA_GN_COMMAND=gn
 
-	# Building at the workspace root compiles every member (aevum, aevum-cli,
-	# rezz, and the alarm lib), producing all three binaries in target/release.
+	# Building the whole workspace (--workspace) compiles every member: aevum,
+	# aevum-cli, rezz, and the alarm lib. Without it `cargo build` from the root
+	# only builds the root `aevum` package + its deps (rezz, alarm), leaving the
+	# standalone `cli` member -- and thus the aevum-cli binary -- unbuilt.
 	# --frozen = --locked + --offline; skia-bindings still reaches the network
 	# itself (its build script downloads Skia + runs git-sync-deps), which
 	# cargo's --offline does not sandbox -- hence options="net".
-	cargo auditable build --frozen --release
+	cargo auditable build --frozen --release --workspace
 }
 
 package() {
