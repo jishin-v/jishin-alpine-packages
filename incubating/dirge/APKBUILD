@@ -1,0 +1,119 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# dirge — minimal, fast coding agent written in Rust. The installed command is
+# `dirge`: the crate is published to crates.io as `dirge-agent` because the
+# short `dirge` name was already taken there, but the [[bin]] name (and thus
+# `module_path!()` / RUST_LOG target) stays `dirge`.
+#
+# Feature set: this aport builds dirge's batteries-included default surface —
+# MCP, LSP, ACP, all 12 tree-sitter language adapters, slash-completion, and
+# the MCP server (`dirge mcp`) — EXCEPT the Janet `plugin` feature. That one
+# feature is dropped for the same reason dirge itself drops it on Windows
+# (see Cargo.toml's `windows-default`): enabling `plugin` pulls `janetrs` ->
+# `evil-janet`, whose build script runs `bindgen` 0.70 over Janet's C headers
+# at build time, and the generated FFI structs come out OPAQUE (every Janet
+# type reduces to a bare `_address` field) against Alpine 3.24's clang 22,
+# producing ~120 "no field …" compile errors in janetrs. dirge's own Nix
+# devshell pins LLVM 18's libclang specifically to dodge this; pinning a
+# stale libclang in an aport would break on every Alpine point release, so
+# the robust choice is to ship the upstream-defined `windows-default` config
+# (default minus Janet) and revisit when upstream's bindgen story stabilises.
+# Everything else dirge advertises builds and works without it.
+#
+# Native code is compiled from vendored sources during `cargo build` (no
+# system C/C++ libs are linked at runtime — see the NEEDED libs below):
+#   * rusqlite (`bundled` feature) — SQLite amalgamation
+#   * tree-sitter grammars         — one small C crate per language (cc crate)
+#   * aws-lc-sys                   — AWS-LC/BoringSSL crypto, built with cmake
+#                                    + perl (perlasm). Pulled in transitively
+#                                    by `rustls` (reqwest/rig TLS backend); no
+#                                    system OpenSSL is required.
+pkgname=dirge
+pkgver=0.18.7
+pkgrel=0
+pkgdesc="Minimal, fast pure-Rust coding agent with persistent memory"
+url="https://github.com/dirge-code/dirge"
+arch="aarch64 x86_64"
+license="GPL-3.0-only"
+# Functional runtime deps beyond abuild's so: autoscan. The release binary
+# links only libgcc_s.so.1 + libc.musl-*.so.1 (both base/auto), so there are
+# no extra so: deps to add. Both deps below are shelled out to by hardcoded
+# binary name (Command::new("…")) and so are mandatory, not merely recommended:
+#   * git  — core agent loop (code review, session digest, worktree mgmt, MCP).
+#   * bash — the default command-execution tool (process-group cleanup on
+#            timeout relies on bash job control; busybox ash is not enough).
+# Optional, not enforced: ssh (microVM sandbox transport), bubblewrap /
+# buildah (bubblewrap / container sandboxes) — installed by users who opt in.
+depends="bash git"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	clang-dev
+	cmake
+	perl
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring —
+# same idiom as the sibling kumo/aevum/charon aports).
+# `!check`: the test suite hits network/LLM providers and needs live fixtures;
+# upstream's own Nix package sets doCheck = false for the same reason.
+options="net !check"
+source="$pkgname-$pkgver.tar.gz::https://github.com/dirge-code/dirge/archive/refs/tags/v$pkgver.tar.gz"
+builddir="$srcdir/$pkgname-$pkgver"
+
+# dirge's `windows-default` feature set: every default feature MINUS the Janet
+# `plugin` feature (see header comment for why). Kept in a variable so the
+# intent ("default minus plugin") stays legible next to the explicit list.
+_features="
+	loop
+	git-worktree
+	mcp
+	lsp
+	acp
+	semantic-ts
+	semantic-python
+	semantic-bash
+	semantic-clojure
+	semantic-go
+	semantic-ruby
+	semantic-rust
+	semantic-java
+	semantic-c
+	semantic-cpp
+	semantic-elixir
+	semantic-sql
+	semantic-dafny
+	slash-completion
+	mcp-server
+	"
+
+prepare() {
+	default_prepare
+	# Populate the cargo cache for the host target (deterministic per
+	# Cargo.lock). CI builds natively per-arch, so fetching the host target is
+	# sufficient.
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# Use Clang (matches the rest of this repo; avoids GCC format-hardening
+	# fatal errors on vendored C/C++ such as AWS-LC). The cc/cxx crates
+	# inherit CC/CXX, and aws-lc-sys's cmake build honours them too.
+	export CC=clang
+	export CXX=clang++
+
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	# --no-default-features + the explicit $_features list = default surface
+	# minus the Janet plugin feature (see header comment).
+	cargo auditable build --frozen --release --no-default-features --features "$_features"
+}
+
+package() {
+	install -D -m755 target/release/$pkgname "$pkgdir"/usr/bin/$pkgname
+}
+
+sha512sums="
+a05433dc813963243f2ffa5ab5c1d17f95aec13d8a25426099a733a11daf71bc15b06c866c5a39292b21f7e266a81b8ea4a64031bdb41f6147e3b63b72069818  dirge-0.18.7.tar.gz
+"
