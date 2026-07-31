@@ -1,0 +1,148 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# noctalia — native Wayland desktop shell: bars, dock, launcher, control
+# center, notifications, wallpaper, lock screen, OSDs, tray, desktop widgets.
+# The UI is Wayland + OpenGL ES with no Qt/GTK dependency. C++23, Meson +
+# Ninja, built straight from upstream's documented release recipe (see the
+# upstream PACKAGING.md): `meson setup --buildtype=release`,
+# `-Dtests=disabled`. This is a fully OFFLINE build — every external
+# dependency is a system apk, and Wuffs / Luau / fzy / Material Color
+# Utilities are vendored under third_party/ with no meson wraps/subprojects,
+# so (unlike the cargo-based sibling aports) `options="net"` is not needed.
+#
+# Version: v5.0.0-beta.7. Upstream's PACKAGING.md and every distro it lists
+# target v5; v4 is EOL (and packaged elsewhere as `noctalia-shell`), and the
+# maintenance policy says "the latest version is the only actively maintained
+# version", so this packages the latest v5 tag even though v5 is still
+# labelled beta. The Alpine pkgver spells the pre-release as `5.0.0_beta7`
+# (apk's suffix rules sort that correctly before 5.0.0); the source URL keeps
+# upstream's `v5.0.0-beta.7` tag, and the tarball extracts to
+# noctalia-5.0.0-beta.7/ (not the pkgver spelling).
+#
+# musl notes:
+#   * jemalloc is glibc-only — meson.build hard-errors if `-Djemalloc=enabled`
+#     is requested on a non-glibc libc — so we pass `-Djemalloc=disabled`.
+#   * GCC 15 (from the auto-added build-base) satisfies the C++23 / GCC 13+
+#     requirement; no clang/libc++ is needed (meson.build only wires up the
+#     `-fexperimental-library` / `-lc++experimental` path for libc++).
+pkgname=noctalia
+pkgver=5.0.0_beta7
+pkgrel=0
+pkgdesc="A sleek, customizable desktop shell crafted for Wayland"
+url="https://github.com/noctalia-dev/noctalia"
+arch="aarch64 x86_64"
+license="MIT"
+# Functional runtime deps beyond abuild's so: autoscan. The ELF NEEDED libs
+# (wayland, EGL/GLES, freetype/fontconfig, cairo/pango/harfbuzz, librsvg,
+# xkbcommon, glib/gobject/gio, libsecret, libsodium, the pipewire/wireplumber
+# *libraries*, curl, qalculate, libxml2, md4c, libical, webp/jxl, sndfile,
+# polkit, pam, libstdc++, …) are all added automatically. Listed here are the
+# non-ELF / concrete-provider requirements from upstream PACKAGING.md's
+# runtime table:
+#   * pipewire    — Noctalia ABORTS at startup if it cannot reach the PipeWire
+#                   *daemon*; the library alone is not enough, and Alpine's
+#                   split `pipewire` apk is the one that carries the daemon.
+#   * wireplumber — the matching session-manager daemon (WirePlumber 0.5).
+#   * font-dejavu — text rendering needs installed fonts (PACKAGING.md lists
+#                   "fonts" abstractly; pin a concrete TTF like the rest of
+#                   this repo's Wayland apps).
+#   * git         — plugin git sources / auto-update shell out to `git` on PATH.
+# Optional, not enforced: upower (battery/power), ddcutil (external monitor
+# brightness), a Secret Service provider (GNOME Keyring / KWallet / KeePassXC).
+depends="
+	font-dejavu
+	git
+	pipewire
+	wireplumber
+	"
+# gcc/g++/libstdc++-dev come from the auto-added build-base (abuild lints if
+# g++ is listed explicitly). mesa-dev provides egl.pc + glesv2.pc, so the
+# libepoxy fallback is never reached. wayland-dev also provides wayland-egl.pc
+# and the wayland-scanner binary. stb ships stb_image_resize2.h /
+# stb_image_write.h (but flat — see the prepare() patch).
+makedepends="
+	cairo-dev
+	curl-dev
+	fontconfig-dev
+	freetype-dev
+	glib-dev
+	harfbuzz-dev
+	libical-dev
+	libjxl-dev
+	libqalculate-dev
+	librsvg-dev
+	libsecret-dev
+	libsndfile-dev
+	libsodium-dev
+	libwebp-dev
+	libxml2-dev
+	libxkbcommon-dev
+	linux-pam-dev
+	md4c-dev
+	mesa-dev
+	meson
+	nlohmann-json
+	pango-dev
+	pipewire-dev
+	pkgconf
+	polkit-dev
+	samurai
+	sdbus-cpp-dev
+	stb
+	tomlplusplus-dev
+	wayland-dev
+	wayland-protocols
+	wireplumber-dev
+	"
+# `!check`: upstream's distro guidance is `-Dtests=disabled` (the unit tests
+# need extra setup and aren't meant to gate distro builds). No `net`: the build
+# is fully offline (system deps + vendored third_party; no meson-time fetches).
+options="!check"
+source="$pkgname-$pkgver.tar.gz::https://github.com/noctalia-dev/noctalia/archive/refs/tags/v5.0.0-beta.7.tar.gz"
+builddir="$srcdir/noctalia-5.0.0-beta.7"
+
+prepare() {
+	default_prepare
+
+	# Alpine's `stb` apk installs the headers flat in /usr/include/ (e.g.
+	# /usr/include/stb_image_resize2.h) with NO stb/ subdirectory, but Noctalia
+	# includes them as <stb/stb_image_resize2.h> and meson.build probes for
+	# exactly that path. Rewrite every include + both has_header() probes to
+	# the flat layout so the configure check and the compiles both find them.
+	sed -i \
+		-e 's#stb/stb_image_resize2\.h#stb_image_resize2.h#g' \
+		-e 's#stb/stb_image_write\.h#stb_image_write.h#g' \
+		"$builddir/meson.build" \
+		"$builddir/src/capture/screenshot_service.cpp" \
+		"$builddir/src/render/core/image_encoder.cpp" \
+		"$builddir/src/render/core/image_file_loader.cpp" \
+		"$builddir/src/render/core/stb_image_resize_impl.cpp" \
+		"$builddir/src/render/core/thumbnail_service.cpp"
+}
+
+build() {
+	# Match upstream PACKAGING.md's recommended distro recipe: release
+	# buildtype (enables Noctalia's release-only -ffunction-sections /
+	# -fdata-sections + -Wl,--gc-sections/--as-needed, and b_ndebug=if-release),
+	# tests off, jemalloc off (glibc-only → meson.build errors on musl).
+	meson setup build \
+		--prefix=/usr \
+		--buildtype=release \
+		-Dtests=disabled \
+		-Djemalloc=disabled
+	meson compile -C build
+}
+
+package() {
+	# meson install lays out (per meson.build): /usr/bin/noctalia,
+	# /usr/share/noctalia/assets/... (minus the .desktop), the .desktop under
+	# /usr/share/applications/, and the SVG icon under
+	# /usr/share/icons/hicolor/scalable/apps/. No man pages / AppStream /
+	# systemd units are shipped (per PACKAGING.md).
+	DESTDIR="$pkgdir" meson install --no-rebuild -C build
+}
+
+sha512sums="
+14d6445c3137d5b6225e998c77eada6d6ce43356204475e35ce0687ebcf72a6d9829b71dd91ea9e6a9ca532b60a9fc09255ee95744229c2e1cf426197f88254f  noctalia-5.0.0_beta7.tar.gz
+"
