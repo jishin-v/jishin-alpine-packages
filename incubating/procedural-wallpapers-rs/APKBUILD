@@ -1,0 +1,49 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# procedural-wallpapers-rs — CLI generator for procedural (e-ink friendly,
+# grayscale-friendly) wallpapers: clouds, flow, islands, lightning,
+# nearestpoint, tangles, cellularone, squares*, nearestgradient, pattern.
+# Rust rewrite of bagyoni's C++ procedural-wallpapers. Two-crate workspace
+# (wallpapers lib + procedural_wallpapers CLI); only the CLI bin is
+# installed (as `procedural_wallpapers`, upstream's name). Pinned to the
+# repo HEAD (2025-12-18) — no tags upstream.
+pkgname=procedural-wallpapers-rs
+pkgver=0.1.0_git20251218
+pkgrel=0
+pkgdesc="Procedural wallpaper generator CLI (e-ink friendly)"
+url="https://github.com/PorQ-Pine/procedural-wallpapers-rs"
+arch="aarch64 x86_64"
+license="MIT"
+# Functional runtime deps beyond abuild's so: autoscan: none — the binary
+# links only libc/libgcc_s.
+depends=""
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring).
+# `!check`: only thumbnail-regression helpers, no unit tests.
+options="net !check"
+_commit=9be1ec048a30efc983d0d1054fb7c1eb8f41f3c1
+source="$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/procedural-wallpapers-rs/tar.gz/$_commit"
+builddir="$srcdir/$pkgname-$_commit"
+
+prepare() {
+	default_prepare
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	cargo auditable build --frozen --release --package procedural_wallpapers
+}
+
+package() {
+	install -D -m755 target/release/procedural_wallpapers \
+		"$pkgdir"/usr/bin/procedural_wallpapers
+}
+
+sha512sums="
+9118f5308bd6dc42adba5a50e10dcca4379adcbc135e564daaac9d50097d1913efa91f99131b53d94e0fdbce5d126b4649ec5def3a9b0b9e0558a1938db9b0b8  procedural-wallpapers-rs-9be1ec048a30efc983d0d1054fb7c1eb8f41f3c1.tar.gz
+"
