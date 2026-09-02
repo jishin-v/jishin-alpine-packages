@@ -46,8 +46,8 @@ arch="aarch64 x86_64"
 # Quill-OS-specific licensing for this DIY repo.
 license="LicenseRef-Quill"
 subpackages="
-	eww-data-requester
-	eink-window-settings
+	eww-data-requester:eww_data_requester
+	eink-window-settings:eink_window_settings
 	"
 # Functional runtime deps beyond abuild's so: autoscan (the so: scan picks
 # up libwayland-client/libxkbcommon for the daemon + settings tool).

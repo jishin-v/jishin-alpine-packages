@@ -9,9 +9,14 @@
 # v2.4.6; pinned to the fork's HEAD (2026-08-27).
 #
 # TLS: reqwest 0.13 resolves to rustls with the aws-lc-rs provider, so the
-# build compiles aws-lc-sys (AWS-LC/BoringSSL) via cmake + perl (perlasm) —
-# same story as the dirge aport, hence the clang/cmake/perl makedepends.
-# gtk4-rs + gtk4-layer-shell cover the UI; no X11 anywhere.
+# build compiles aws-lc-sys (AWS-LC/BoringSSL) via its cc builder (no cmake,
+# no perl, pregenerated "universal" bindings — no bindgen/libclang either).
+# aws-lc's vendored jitterentropy #errors out under any -O flag, and abuild's
+# CFLAGS (-Os …) get appended after the crate's own -O0 by the cc crate, so
+# the module cannot be built under distro CFLAGS at all — disable it with
+# AWS_LC_SYS_NO_JITTER_ENTROPY=1 (non-FIPS builds fall back to the other
+# entropy sources; fine for a network widget applet). gtk4-rs +
+# gtk4-layer-shell cover the UI; no X11 anywhere.
 pkgname=orbit
 pkgver=2.4.6_git20260827
 pkgrel=0
@@ -36,8 +41,6 @@ makedepends="
 	rust
 	clang
 	clang-dev
-	cmake
-	perl
 	pkgconf
 	gtk4.0-dev
 	gtk4-layer-shell-dev
@@ -56,9 +59,12 @@ prepare() {
 
 build() {
 	# aws-lc-sys compiles cleanly with clang (repo idiom; avoids GCC
-	# format-hardening fatal errors on vendored C).
+	# format-hardening fatal errors on vendored C). jitterentropy is
+	# disabled because abuild's -Os CFLAGS override its mandatory -O0 —
+	# see the header comment.
 	export CC=clang
 	export CXX=clang++
+	export AWS_LC_SYS_NO_JITTER_ENTROPY=1
 
 	cargo auditable build --frozen --release
 }

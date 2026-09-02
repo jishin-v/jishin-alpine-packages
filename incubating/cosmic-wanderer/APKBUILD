@@ -38,7 +38,7 @@ arch="aarch64 x86_64"
 # Upstream ships no license file (checked the pinned commit); treat as
 # Quill-OS-specific licensing for this DIY repo.
 license="LicenseRef-Quill"
-subpackages="cosmic-wanderer-opener"
+subpackages="cosmic-wanderer-opener:cosmic_wanderer_opener"
 # Functional runtime deps beyond abuild's so: autoscan. Qt6 libs come via
 # so:-deps (qt6-qtbase); qt6-qtwayland is the Wayland platform plugin (not
 # an ELF dep, loaded at runtime), font-dejavu because Qt renders no text
