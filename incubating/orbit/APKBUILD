@@ -1,0 +1,75 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# orbit — GTK4 + layer-shell WiFi/Bluetooth/VPN manager speaking NetworkManager
+# + BlueZ over D-Bus (zbus), with a high-contrast glassmorphism UI and public
+# IP/DNS dashboard bits (reqwest + rustls). Runs as a daemon
+# (`orbit daemon`) that pops the window on demand, or one-shot. This is the
+# PorQ-Pine fork of LifeOfATitan/orbit carrying one fix commit on top of
+# v2.4.6; pinned to the fork's HEAD (2026-08-27).
+#
+# TLS: reqwest 0.13 resolves to rustls with the aws-lc-rs provider, so the
+# build compiles aws-lc-sys (AWS-LC/BoringSSL) via cmake + perl (perlasm) —
+# same story as the dirge aport, hence the clang/cmake/perl makedepends.
+# gtk4-rs + gtk4-layer-shell cover the UI; no X11 anywhere.
+pkgname=orbit
+pkgver=2.4.6_git20260827
+pkgrel=0
+pkgdesc="WiFi/Bluetooth/VPN manager for Wayland (GTK4 + layer-shell)"
+url="https://github.com/PorQ-Pine/orbit"
+arch="aarch64 x86_64"
+license="MIT"
+# Functional runtime deps beyond abuild's so: autoscan. The GTK4 /
+# layer-shell / glib shared libs are picked up automatically.
+#   * networkmanager — the wifi/VPN backend daemon (nmcli comes along in
+#                      networkmanager-cli; orbit talks D-Bus to NM itself)
+#   * bluez          — the bluetooth backend daemon
+#   * font-dejavu    — GTK renders no text without a concrete font
+depends="
+	networkmanager
+	bluez
+	font-dejavu
+	"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	clang-dev
+	cmake
+	perl
+	pkgconf
+	gtk4.0-dev
+	gtk4-layer-shell-dev
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring).
+# `!check`: no test suite.
+options="net !check"
+_commit=165e6bb3e69c11caea92080947fc4eda1f91c6dc
+source="$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/orbit/tar.gz/$_commit"
+builddir="$srcdir/$pkgname-$_commit"
+
+prepare() {
+	default_prepare
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# aws-lc-sys compiles cleanly with clang (repo idiom; avoids GCC
+	# format-hardening fatal errors on vendored C).
+	export CC=clang
+	export CXX=clang++
+
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/orbit "$pkgdir"/usr/bin/orbit
+
+	install -D -m644 config/config.example.toml \
+		"$pkgdir"/usr/share/orbit/config.example.toml
+}
+
+sha512sums="
+111924453fb1b47968d5ba5b9d78799c159d69e26d21d015b4bed531b29bbf86190bacc8d4593ee37da2546d5621e4f312771aadc9f5063410e6b99f05af7e32  orbit-165e6bb3e69c11caea92080947fc4eda1f91c6dc.tar.gz
+"
