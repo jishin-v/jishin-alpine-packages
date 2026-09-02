@@ -1,0 +1,62 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# eww-config — the actual Quill OS shell: eww bar + quick-settings/control
+# center, power menu, calendar, screen settings, performance settings and
+# window menu (yuck + scss + svg, data only, no binaries). Consumes
+# quill-data-provider (via eww-data-requester) and eww-niri-taskbar for
+# data, and drives cosmic-wanderer-opener / orbit / pamixer / playerctl /
+# niri msg from widget buttons.
+#
+# Data-only noarch aport: everything installs to /usr/share/eww/quill. A
+# `quill-eww` wrapper runs eww against that directory, so the session only
+# needs e.g. `quill-eww open bar` (equivalently:
+# `eww --force-wayland --config /usr/share/eww/quill open bar`, the line
+# Quill's niri config spawns).
+pkgname=eww-config
+pkgver=20260625
+pkgrel=0
+pkgdesc="Quill OS shell (eww bar, control center, power menu, settings)"
+url="https://github.com/PorQ-Pine/eww-config"
+arch="noarch"
+# Upstream ships no license file (checked the pinned commit); treat as
+# Quill-OS-specific licensing for this DIY repo.
+license="LicenseRef-Quill"
+# Every command the yuck files shell out to (grep-verified against the
+# pinned commit): eww-data-requester + quill-data-provider (data layer),
+# eww-niri-taskbar (taskbar), cosmic-wanderer-opener (launcher toggle),
+# orbit (network manager), pamixer/playerctl (mixer/MPRIS), niri (focus/
+# close window), plus eww itself; bash/date/awk come from the base system.
+depends="
+	eww
+	quill-data-provider
+	eww-data-requester
+	eww-niri-toolbar
+	cosmic-wanderer-opener
+	orbit
+	niri
+	pamixer
+	playerctl
+	"
+_commit=ce58791e07b2cbf3188f83a29f3aadb72a603b11
+source="$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/eww-config/tar.gz/$_commit"
+builddir="$srcdir/$pkgname-$_commit"
+
+package() {
+	# The whole tree is the eww config dir (eww.yuck, variables.yuck,
+	# eww.scss + scss/, and the per-widget yuck/svg dirs).
+	install -d -m755 "$pkgdir"/usr/share/eww/quill
+	cp -a . "$pkgdir"/usr/share/eww/quill/
+
+	# Wrapper so a session can spawn the shell without copying the config
+	# tree: `quill-eww open bar` (== eww --force-wayland --config
+	# /usr/share/eww/quill …).
+	printf '%s\n' \
+		'#!/bin/sh' \
+		'exec eww --force-wayland --config /usr/share/eww/quill "$@"' \
+		| install -D -m755 /dev/stdin "$pkgdir"/usr/bin/quill-eww
+}
+
+sha512sums="
+70d4db3f7e70b3c2dc433f28bc297e88c9c246d78c1126054a8a78586f9e41356fbd67f2e6dcc08e17deb8510ea1f6075d7d0aa8079d09ce52ab2760a4d1534b  eww-config-ce58791e07b2cbf3188f83a29f3aadb72a603b11.tar.gz
+"
