@@ -1,0 +1,127 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# pinenote-service — D-Bus daemon (org.pinenote.PineNoteCtl) wrapping the
+# PineNote's rockchip_ebc e-ink driver: refresh modes, render hints (Y4/Y2/Y1,
+# threshold/dither, redraw), dither mode, global refresh, suspend/off-screen
+# image, EBC ioctls. "Bridges" additionally track compositor window geometry
+# and push per-window render hints down into the driver.
+#
+# This is the PorQ-Pine (Quill OS) fork of phantomas's sr.ht project; the
+# fork adds the quill-niri bridge + window-hint plumbing over the 1.0.1
+# release. The fork tags no releases, so we pin the exact commit quillstrap
+# builds (2026-06-25). Built with upstream DEFAULT features (bridges +
+# quill-niri), i.e. the daemon Quill ships: the niri bridge + generic D-Bus
+# HintMgr1 bridge. (Upstream's bare `bridges` feature is a base flag that
+# compile_error!s unless a concrete bridge is enabled; `sway` would be the
+# other choice but our stack is niri.)
+#
+# quill-niri is a PATH dependency cluster resolving against quillstrap's
+# checkout layout: from os/low/pinenote-service, ../qoms/qoms_lib and
+# ../../gui/{niri/niri-ipc,quill_data_provider/quill-data-provider-lib}. The
+# fork's niri-ipc carries unreleased upstream API (WindowGeometries,
+# MaxBpc) the bridge needs, so crates.io cannot substitute it. prepare()
+# reconstructs that layout with symlinks into $srcdir (same idea as
+# charon's gitlink submodules). quill-data-provider-lib drags the
+# egui/winit stack into the build (upstream design — the lib's types are
+# shared with the daemon); hence the wayland/libxkbcommon makedepends.
+#
+# Cargo.lock caveat: the fork's committed lock references the
+# quill_data_provider state of ~2026-06 (egui 0.33 line), while the pinned
+# quill-data-provider commit (2026-07-01) requires egui 0.34 — quillstrap
+# itself builds unlocked and lets cargo refresh the lock, so this aport
+# does the same: `cargo fetch` (no --locked) refreshes Cargo.lock in
+# prepare(), then the build runs --frozen (offline) against the refreshed
+# lock. Slightly less reproducible than the sibling aports, but faithful
+# to how upstream builds this crate cluster.
+#
+# Session integration: upstream ships a systemd *user* unit + a D-Bus
+# activation file. We install only the D-Bus activation file (with the
+# SystemdService= line dropped — meaningless on OpenRC), so the daemon
+# auto-starts on the session bus the first time anything talks to it
+# (`busctl --user call org.pinenote.PineNoteCtl …`), or it can be spawned
+# from the compositor config like Quill's niri config does.
+pkgname=pinenote-service
+pkgver=1.0.1_git20260625
+pkgrel=0
+pkgdesc="D-Bus daemon managing the PineNote e-ink (rockchip_ebc) driver"
+url="https://github.com/PorQ-Pine/pinenote-service"
+arch="aarch64 x86_64"
+license="GPL-3.0-or-later"
+# Functional runtime deps beyond abuild's so: autoscan. The daemon links
+# libwayland-client/libxkbcommon (via quill-data-provider-lib's eframe
+# types) which the so: scan picks up automatically; listed here is:
+#   * dbus — session bus; the daemon owns org.pinenote.PineNoteCtl there
+#     and the installed activation file needs a session dbus-daemon.
+# Optional, not enforced: niri (the quill-niri bridge retries until its
+# IPC socket appears; without niri the generic D-Bus bridge still serves
+# clients such as quill-data-provider).
+depends="dbus"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	libxkbcommon-dev
+	wayland-dev
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring —
+# same idiom as the sibling cargo aports).
+# `!check`: the fork ships no test suite.
+options="net !check"
+_commit=d19573beb26fc12811f0a652f429bbf9ac45cfec
+_qoms_commit=55b13d62f28a7cdd53eb6119ef9a27cd5235b724
+_niri_commit=0e30f33bc5fa63a017992465c049d0ec4fd3b137
+_qdp_commit=a43b3b921c65799652a07c39a7e8d235813be64e
+source="
+	$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/pinenote-service/tar.gz/$_commit
+	qoms-$_qoms_commit.tar.gz::https://codeload.github.com/PorQ-Pine/qoms/tar.gz/$_qoms_commit
+	niri-$_niri_commit.tar.gz::https://codeload.github.com/PorQ-Pine/niri/tar.gz/$_niri_commit
+	quill-data-provider-$_qdp_commit.tar.gz::https://codeload.github.com/PorQ-Pine/quill-data-provider/tar.gz/$_qdp_commit
+	"
+# Reconstructed quillstrap layout (see header comment): the crate itself
+# lives at os/low/pinenote-service so its path deps resolve.
+builddir="$srcdir/os/low/pinenote-service"
+
+prepare() {
+	# Reconstructed quillstrap layout (see header comment): the crate itself
+	# is MOVED to os/low/pinenote-service (a real dir — path deps walk ../..,
+	# and .. resolves physically, so a symlinked builddir would escape the
+	# layout), while the sibling path-dep checkouts are symlinked in.
+	# abuild runs this phase in $srcdir while $builddir doesn't exist yet,
+	# hence the explicit cd.
+	mkdir -p "$srcdir"/os/low "$srcdir"/os/gui
+	mv "$srcdir/pinenote-service-$_commit" "$builddir"
+	ln -s "$srcdir/qoms-$_qoms_commit" "$srcdir"/os/low/qoms
+	ln -s "$srcdir/niri-$_niri_commit" "$srcdir"/os/gui/niri
+	ln -s "$srcdir/quill-data-provider-$_qdp_commit" \
+		"$srcdir"/os/gui/quill_data_provider
+	cd "$builddir"
+
+	# Unlocked fetch: refreshes the stale Cargo.lock against the pinned
+	# sibling crates (see header comment), like quillstrap's own build.
+	cargo fetch --target="$CTARGET"
+}
+
+build() {
+	# --frozen = --locked + --offline against the lock refreshed above.
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/pinenote-service \
+		"$pkgdir"/usr/bin/pinenote-service
+
+	# D-Bus (session) activation, minus the SystemdService= handoff that only
+	# makes sense under systemd.
+	sed '/^SystemdService=/d' packaging/resources/org.pinenote.PineNoteCtl.service \
+		> "$srcdir"/org.pinenote.PineNoteCtl.service
+	install -D -m644 "$srcdir"/org.pinenote.PineNoteCtl.service \
+		"$pkgdir"/usr/share/dbus-1/services/org.pinenote.PineNoteCtl.service
+}
+
+sha512sums="
+cff9d928f5307506b74ba44621038ead10e6224b31fddf79222e32b1c38ab26863527beeb343d9334948d934bc2f2789387697e0e939e0bdeb2255e8a995e57e  pinenote-service-d19573beb26fc12811f0a652f429bbf9ac45cfec.tar.gz
+453e6bda405be3e535449aac3f29fa929df3c3498900e358a5c041f3ce7f4cffedb0cfccbd24f9018dc4fe719c31d640c6376b9076e8e85a35814b32a648a17b  qoms-55b13d62f28a7cdd53eb6119ef9a27cd5235b724.tar.gz
+444bd5d62a7b7cfea4e9667e12274742d4147e8bcbc2351859fd9cd9d503e526003164742d13c0eb095318723210c9f837cf02cf71f1dcddfa528c95d9d12267  niri-0e30f33bc5fa63a017992465c049d0ec4fd3b137.tar.gz
+70ab29058f270a624f1f6551838c1f3624021f36f60f17f6095227f07a990327968dbd237bdfa92a13d56a6d481ea2c5bf77e899470bf1ba27f0f4f13d811841  quill-data-provider-a43b3b921c65799652a07c39a7e8d235813be64e.tar.gz
+"
