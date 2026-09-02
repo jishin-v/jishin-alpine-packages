@@ -1,0 +1,66 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# eww — ElKowar's Wacky Widgets, a widget system made in Rust for creating
+# weird and highly flexible widgets for Linux. Built WAYLAND-ONLY
+# (--no-default-features --features wayland, same feature selection as
+# Alpine's own testing/eww APKGBUILD): GTK3 + gtk-layer-shell, no X11.
+#
+# Alpine only carries eww in *testing* (unavailable from the v3.24
+# main/community repos this DIY repo builds against), and the Quill OS
+# shell's eww-config targets this PorQ-Pine fork anyway, so we package the
+# fork here. The fork tracks elkowar/eww master (2026-01-11: multi-monitor
+# wayland handling, formatbytes, image HiDPI support) plus one PorQ commit
+# ("Fix icon DPI"). Unlike the v0.6.0 release tarball — which needs
+# Alpine's update-cargo-lock patch to build against current rustc — the
+# fork's master Cargo.lock is current, so it builds --locked unpatched.
+# pkgver stays 0.6.0 because upstream master never bumped the crate
+# version past the 0.6.0 release.
+#
+# eww-config (the Quill shell) is the main consumer here; see that aport
+# for the wrapper that points eww at /usr/share/eww/quill.
+pkgname=eww
+pkgver=0.6.0_git20260111
+pkgrel=0
+pkgdesc="ElKowar's wacky widgets (Quill OS fork, wayland-only build)"
+url="https://github.com/PorQ-Pine/eww"
+arch="aarch64 x86_64"
+license="MIT"
+# Functional runtime deps beyond abuild's so: autoscan: none — the GTK3 /
+# gtk-layer-shell / glib / cairo / pango shared libs are picked up
+# automatically. Optional, not enforced: a font such as font-dejavu (GTK
+# needs one to render text at all).
+depends=""
+makedepends="
+	cargo
+	cargo-auditable
+	gtk+3.0-dev
+	gtk-layer-shell-dev
+	libdbusmenu-glib-dev
+	libdbusmenu-gtk3-dev
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring).
+# `!check`: unit tests exist (yuck/simplexpr) but are not worth gating a DIY
+# build on — consistent with the sibling cargo aports.
+options="net !check"
+_commit=2d3336e609ed15581f82165fd023c31a85b9876f
+source="$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/eww/tar.gz/$_commit"
+builddir="$srcdir/$pkgname-$_commit"
+
+prepare() {
+	default_prepare
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	cargo auditable build --frozen --release \
+		--no-default-features --features wayland
+}
+
+package() {
+	install -D -m755 target/release/eww "$pkgdir"/usr/bin/eww
+}
+
+sha512sums="
+53e756329cd6c5d9597466b9f5e75ff0b4d09fca9f888beea147db9c8ce8d723cdba0195d80f9913acfd780f12f6875b8b5e740a19fd0a0b36faad77030068ba  eww-2d3336e609ed15581f82165fd023c31a85b9876f.tar.gz
+"
