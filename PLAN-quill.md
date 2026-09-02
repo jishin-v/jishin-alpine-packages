@@ -218,4 +218,36 @@ Not in Alpine (our opportunity): `pinenote-service`, `quill-data-provider`,
 
 ### CI iteration history
 
-- (pending)
+- **Run 1** (push `ed47e48`, /keep-going): 5/10 green on first try — eww,
+  eww-niri-toolbar, quill-configs-pinenote, pinenote-service (the os/ layout
+  reconstruction + unlocked fetch worked, incl. aarch64),
+  procedural-wallpapers-rs. Failures: (a) `Missing split function` — abuild
+  derives subpackage split fn names from the LAST dash-component
+  (`eww-data-requester` → `requester()`), fixed with the explicit
+  `subpkg:splitfn` syntax; (b) orbit — aws-lc-sys's vendored jitterentropy
+  #errors under any -O, and abuild's `-Os …` CFLAGS get appended after the
+  crate's own `-O0`, so the module is unbuildable under distro CFLAGS —
+  fixed with `AWS_LC_SYS_NO_JITTER_ENTROPY=1` (cc builder honors it;
+  dropped the unused cmake/perl makedeps, the build uses pregenerated
+  "universal" bindings so no bindgen either); (c) eww-config +
+  quill-os-pinenote builddeps failed (cascade).
+- **Run 2** (push `e8832e1`): orbit ✓, quill-data-provider +
+  eww-data-requester + eink-window-settings ✓. New failure: cosmic-wanderer
+  checksums — the sha512sums line carried the upstream tarball name
+  (`Cosmic-Wanderer-…`) while source= renames it lowercase.
+- **Run 3** (push `cdb6563`): cosmic-wanderer prepare failed — `sed:
+  Cargo.lock: No such file or directory`: the tarball extracts to
+  `Cosmic-Wanderer-<sha>` (capitalized) so the lowercase builddir didn't
+  exist and abuild silently ran prepare in $srcdir. Fixed builddir to the
+  capitalized name.
+- **Run 4** (push `b1d2d1b`): **all green, both arches** — cosmic-wanderer (+
+  opener), eww-config, quill-os-pinenote built; nothing left to do.
+
+Final state: 12 apks published per arch in
+`…/alpine/v3.24/incubating/<arch>/`: pinenote-service,
+quill-data-provider, eww-data-requester, eink-window-settings,
+eww-niri-toolbar, eww, eww-config, cosmic-wanderer,
+cosmic-wanderer-opener, orbit, procedural-wallpapers-rs,
+quill-configs-pinenote, quill-os-pinenote. so:-scan confirms the slint Qt
+  backend really linked libQt6Widgets/Gui/Core into cosmic-wanderer, and
+  orbit picked up gtk-4 + gtk4-layer-shell.
