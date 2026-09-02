@@ -1,0 +1,108 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# quill-configs-pinenote — the board/session configuration cherry-picked
+# from Quill OS's rootfs-configs for postmarketOS on the PineNote:
+#   * udev rules: backlight brightness + CPU governor permissions for
+#     non-root sessions, and the rockchip_ebc module parameter
+#     (y4_threshold_y1) that the e-ink dithering tuning needs writable.
+#     Upstream chmods 0777 (DIY distro style) — kept as-is; on multi-user
+#     systems consider tightening.
+#   * fontconfig: Quill's font preferences (Noto Serif / Adwaita Sans /
+#     Adwaita Mono) as a conf.avail snippet — enable with
+#     `ln -s /usr/share/fontconfig/conf.avail/69-quill-pinenote.conf
+#     /etc/fonts/conf.d/` (Alpine's fontconfig ships no local.conf).
+#   * niri config.kdl tuned for the PineNote display (90° rotation, touch
+#     calibration matrix, pen mapping, e-ink-friendly rendering) that also
+#     spawns the Quill session stack (quill-data-provider,
+#     cosmic-wanderer, eww bar, orbit daemon, squeekboard, dunst, swaybg).
+#     Install as ~/.config/niri/config.kdl.
+#   * orbit config/theme matching Quill's look.
+#   * the default e-ink-friendly wallpaper (used by the sample niri
+#     config's swaybg line).
+#
+# systemd units, greetd config, sudoers, dnf.conf and the Fedora-flavoured
+# skel dotfiles stay out — postmarketOS owns boot/session/user management.
+# NOTE: the sample config also references the GoogleDot-Black cursor theme
+# (not packaged in Alpine — niri falls back to the default cursor) and the
+# Papirus icon theme (community/papirus-icon-theme).
+pkgname=quill-configs-pinenote
+pkgver=20260813
+pkgrel=0
+pkgdesc="Quill OS board/session configs for the PineNote (pmOS flavour)"
+url="https://github.com/PorQ-Pine/rootfs-configs"
+arch="noarch"
+# Upstream ships no license file (checked the pinned commit); treat as
+# Quill-OS-specific licensing for this DIY repo.
+license="LicenseRef-Quill"
+# The udev rules only take effect with a udev implementation running
+# (eudev on pmOS); the rest of the package is pure data.
+depends="eudev"
+_commit=ad3e50abc7e68f037d5fecb90a4620637f5b2793
+source="$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/rootfs-configs/tar.gz/$_commit"
+builddir="$srcdir/rootfs-configs-$_commit"
+
+package() {
+	local skel=common/etc/skel
+
+	# udev rules (upstream names kept)
+	install -D -m644 common/etc/udev/rules.d/90-backlight-perms.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/90-backlight-perms.rules
+	install -D -m644 common/etc/udev/rules.d/91-cpu-perms.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/91-cpu-perms.rules
+	install -D -m644 common/etc/udev/rules.d/92-rockchip-ebc.rules \
+		"$pkgdir"/usr/lib/udev/rules.d/92-rockchip-ebc.rules
+
+	# fontconfig preferences (opt-in via conf.d symlink; see header)
+	install -D -m644 common/etc/fonts/local.conf \
+		"$pkgdir"/usr/share/fontconfig/conf.avail/69-quill-pinenote.conf
+
+	# niri session config for the PineNote
+	install -D -m644 "$skel"/.config/niri/config.kdl \
+		"$pkgdir"/usr/share/quill-configs-pinenote/niri/config.kdl
+
+	# orbit config/theme as shipped in the Quill skel
+	install -D -m644 "$skel"/.config/orbit/config.toml \
+		"$pkgdir"/usr/share/quill-configs-pinenote/orbit/config.toml
+	install -D -m644 "$skel"/.config/orbit/style.css \
+		"$pkgdir"/usr/share/quill-configs-pinenote/orbit/style.css
+	install -D -m644 "$skel"/.config/orbit/theme.toml \
+		"$pkgdir"/usr/share/quill-configs-pinenote/orbit/theme.toml
+
+	# default wallpaper (referenced by the sample niri config's swaybg line)
+	install -D -m644 common/usr/share/backgrounds/quill_wallpaper1.png \
+		"$pkgdir"/usr/share/backgrounds/quill_wallpaper1.png
+
+	# Where things live + how to enable them
+	install -D -m644 /dev/stdin \
+		"$pkgdir"/usr/share/doc/$pkgname/README.alpine <<'EOF'
+Quill OS PineNote configs on postmarketOS
+=========================================
+
+udev rules (installed to /usr/lib/udev/rules.d/, active after reboot):
+  90-backlight-perms.rules   backlight brightness writable by users
+  91-cpu-perms.rules         CPU governor writable by users
+  92-rockchip-ebc.rules      rockchip_ebc y4_threshold_y1 writable
+
+fontconfig: to get Quill's font preferences (Noto Serif / Adwaita Sans /
+Adwaita Mono), run:
+  ln -s /usr/share/fontconfig/conf.avail/69-quill-pinenote.conf \
+        /etc/fonts/conf.d/69-quill-pinenote.conf
+
+niri session (bar, launcher, daemons): copy the sample and adapt:
+  mkdir -p ~/.config/niri
+  cp /usr/share/quill-configs-pinenote/niri/config.kdl ~/.config/niri/
+
+  It spawns: dunst, quill-data-provider, cosmic-wanderer, swaybg (with
+  /usr/share/backgrounds/quill_wallpaper1.png), `eww --force-wayland open
+  bar` (point that at /usr/share/eww/quill or use the quill-eww wrapper),
+  `orbit daemon` and squeekboard.
+
+orbit: copy /usr/share/quill-configs-pinenote/orbit/{config.toml,style.css,
+theme.toml} to ~/.config/orbit/ if you want Quill's look.
+EOF
+}
+
+sha512sums="
+d91d8674c78743a227a820aa08ad3ed3a1df2a53cff55ded88a1fe800ac926bd396538ae1cbc29733a77e5b18e0a8ada179504473193f81baf8da40f6fd38e65  quill-configs-pinenote-ad3e50abc7e68f037d5fecb90a4620637f5b2793.tar.gz
+"
