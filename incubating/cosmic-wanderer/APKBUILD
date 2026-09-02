@@ -1,0 +1,117 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# cosmic-wanderer — Quill OS's app launcher: a Slint UI (fluent-light style)
+# that scans freedesktop desktop entries, fuzzy-matches, shows
+# notifications, talks to niri for window awareness, and reloads on .desktop
+# file changes (inotify). The `quill_defaults` feature is OFF (upstream
+# defaults); `config_file` stays on, config lands in
+# ~/.config/cosmic-wanderer/.
+#
+# Slint is built with the Qt backend (backend-qt + renderer-software +
+# accessibility): the C++ glue is compiled at build time via the cpp crate
+# against Qt 6 (found through qmake6 from qt6-qtbase-dev; QMAKE is exported
+# for the qttypes crate since unversioned `qmake` doesn't exist on Alpine).
+# cpp 0.5 is self-contained (no clang/libclang needed — unlike newer cpp).
+# C++ compilation goes through clang to match the rest of this repo.
+#
+# The niri-ipc path dep (../niri/niri-ipc/) resolves against quillstrap's
+# os/gui checkout layout: from $builddir that is $srcdir/niri/niri-ipc. The
+# PorQ niri fork tarball extracts to $srcdir/niri-<sha>, so prepare()
+# symlinks it into place. The fork's niri-ipc carries unreleased upstream
+# API, so the crates.io crate cannot be substituted.
+#
+# cosmic-wanderer-opener is a standalone std-only helper crate (its own
+# Cargo.lock, not a workspace member) that pokes the launcher's toggle
+# socket (/tmp/comsic-wanderer.sock — typo is upstream's) — shipped as a
+# subpackage because eww-config's bar buttons call it.
+#
+# Runtime: the Qt platform plugin needs qt6-qtwayland under Wayland and Qt
+# needs fonts (fontconfig + a concrete font). so:-autoscan picks up
+# libQt6Widgets/Gui/Core and their deps.
+pkgname=cosmic-wanderer
+pkgver=0.1.0_git20260419
+pkgrel=0
+pkgdesc="Quill OS Slint/Qt app launcher with niri integration"
+url="https://github.com/PorQ-Pine/Cosmic-Wanderer"
+arch="aarch64 x86_64"
+# Upstream ships no license file (checked the pinned commit); treat as
+# Quill-OS-specific licensing for this DIY repo.
+license="LicenseRef-Quill"
+subpackages="cosmic-wanderer-opener"
+# Functional runtime deps beyond abuild's so: autoscan. Qt6 libs come via
+# so:-deps (qt6-qtbase); qt6-qtwayland is the Wayland platform plugin (not
+# an ELF dep, loaded at runtime), font-dejavu because Qt renders no text
+# without a concrete font.
+depends="
+	qt6-qtwayland
+	font-dejavu
+	"
+# clang/clang-dev: C++ glue for the slint Qt backend is compiled with the
+# host compiler; we use clang (repo idiom). g++/libstdc++-dev come from the
+# auto-added build-base.
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	clang-dev
+	qt6-qtbase-dev
+	pkgconf
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring).
+# `!check`: no test suite.
+options="net !check"
+_commit=5a8a3563a5b6c6f322b9427fa4402053cae8f31a
+_niri_commit=0e30f33bc5fa63a017992465c049d0ec4fd3b137
+source="
+	$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/Cosmic-Wanderer/tar.gz/$_commit
+	niri-$_niri_commit.tar.gz::https://codeload.github.com/PorQ-Pine/niri/tar.gz/$_niri_commit
+	"
+builddir="$srcdir/$pkgname-$_commit"
+
+prepare() {
+	default_prepare
+
+	# Reconstruct the niri path dep (see header comment).
+	ln -s "niri-$_niri_commit" "$srcdir/niri"
+
+	# The committed lock pins niri-ipc 25.11.0 (the fork state when this repo
+	# was last locked); the pinned fork is 26.4.0. quillstrap builds unlocked
+	# and lets cargo refresh this silently — with a path dep there is no
+	# checksum involved, so bump the single version line and stay --locked.
+	# ("25.11.0" appears exactly once in the lock: the niri-ipc entry.)
+	sed -i 's/^version = "25.11.0"$/version = "26.4.0"/' Cargo.lock
+
+	cargo fetch --target="$CTARGET" --locked
+	(cd cosmic-wanderer-opener && cargo fetch --target="$CTARGET" --locked)
+}
+
+build() {
+	# C++ (slint Qt backend glue) via clang, repo idiom; QMAKE pins the
+	# qttypes crate's Qt discovery to Alpine's qmake6.
+	export CC=clang
+	export CXX=clang++
+	export QMAKE=qmake6
+
+	cargo auditable build --frozen --release
+	(cd cosmic-wanderer-opener && cargo auditable build --frozen --release)
+}
+
+package() {
+	install -D -m755 target/release/cosmic-wanderer \
+		"$pkgdir"/usr/bin/cosmic-wanderer
+	install -D -m755 cosmic-wanderer-opener/target/release/cosmic-wanderer-opener \
+		"$pkgdir"/usr/bin/cosmic-wanderer-opener
+}
+
+cosmic_wanderer_opener() {
+	pkgdesc="Toggle-switch helper for cosmic-wanderer (socket poke)"
+	depends=""
+	amove usr/bin/cosmic-wanderer-opener
+}
+
+sha512sums="
+ce858b17b53fe46266c77448ffbb44972b652889c6543cd5bdab289984b8a81bd9481f8efdf8ebd7d3a6e5399892f829a813c3ae46175f5d5fb6aa9e63afab16  Cosmic-Wanderer-5a8a3563a5b6c6f322b9427fa4402053cae8f31a.tar.gz
+444bd5d62a7b7cfea4e9667e12274742d4147e8bcbc2351859fd9cd9d503e526003164742d13c0eb095318723210c9f837cf02cf71f1dcddfa528c95d9d12267  niri-0e30f33bc5fa63a017992465c049d0ec4fd3b137.tar.gz
+"
