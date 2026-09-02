@@ -1,0 +1,45 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# quill-os-pinenote — metapackage pulling the Quill OS userspace stack
+# (the parts that make sense on postmarketOS; see PLAN-quill.md for the
+# components deliberately left out: qinit/qoms boot machinery, kernel/
+# u-boot/firmware, and the stock-upstream apps Alpine already ships).
+#
+# Runtime session expectation: postmarketOS with a niri session (see
+# quill-configs-pinenote's sample config.kdl, which spawns the stack), a
+# session D-Bus (pinenote-service D-Bus-activates on it), NetworkManager
+# + BlueZ (orbit/quill-data-provider backends) and PipeWire-Pulse or
+# PulseAudio (pactl/pamixer).
+pkgname=quill-os-pinenote
+pkgver=1
+pkgrel=0
+pkgdesc="Metapackage: the Quill OS userspace stack for postmarketOS"
+url="https://github.com/PorQ-Pine"
+arch="noarch"
+license="MIT"
+depends="
+	pinenote-service
+	quill-data-provider
+	eww-data-requester
+	eink-window-settings
+	eww
+	eww-config
+	eww-niri-toolbar
+	cosmic-wanderer
+	cosmic-wanderer-opener
+	orbit
+	procedural-wallpapers-rs
+	quill-configs-pinenote
+	niri
+	swaybg
+	squeekboard
+	dunst
+	adwaita-fonts
+	font-noto
+	papirus-icon-theme
+	"
+
+package() {
+	mkdir -p "$pkgdir"
+}
