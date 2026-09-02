@@ -1,0 +1,76 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# eww-niri-toolbar — small helper binary (installs as `eww-niri-taskbar`,
+# the crate/package name) that subscribes to niri's IPC, collects
+# workspaces/windows with their freedesktop icons, and emits JSON lines for
+# an eww `deflisten` taskbar widget (example yuck in the README; the Quill
+# shell's bar in eww-config consumes it).
+#
+# The niri-ipc path dep (../niri/niri-ipc/) resolves against quillstrap's
+# os/gui checkout layout: from $builddir that is $srcdir/niri/niri-ipc. The
+# PorQ niri fork tarball extracts to $srcdir/niri-<sha>, so prepare()
+# symlinks it into place. The fork's niri-ipc carries unreleased upstream
+# API, so the crates.io crate cannot be substituted.
+#
+# Cargo.lock caveat: the committed lock pins niri-ipc 25.11.0 / serde_json
+# 1.0.145 (the fork state when this repo was last locked); the pinned fork
+# is niri-ipc 26.4.0 and requires serde_json >= 1.0.149. quillstrap builds
+# unlocked and lets cargo refresh the lock — this aport does the same in
+# prepare() (unlocked `cargo fetch`), then builds --frozen against the
+# refreshed lock.
+#
+# The binary only needs a running niri at runtime (it retries until the IPC
+# socket appears); icons resolve via the XDG icon-theme lookup, so an icon
+# theme (Quill uses Papirus) should be installed for meaningful icons.
+pkgname=eww-niri-toolbar
+pkgver=0.2.0_git20260205
+pkgrel=0
+pkgdesc="niri workspaces/windows to JSON for an eww taskbar widget"
+url="https://github.com/PorQ-Pine/eww-niri-toolbar"
+arch="aarch64 x86_64"
+license="MIT"
+# Functional runtime deps beyond abuild's so: autoscan (there are none —
+# the binary links only libc/libgcc_s). Optional, not enforced: an icon
+# theme such as papirus-icon-theme for app icons.
+depends=""
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring).
+# `!check`: no test suite.
+options="net !check"
+_commit=51e01ee45422aae91c3956ed4f233d0b165e7b11
+_niri_commit=0e30f33bc5fa63a017992465c049d0ec4fd3b137
+source="
+	$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/eww-niri-toolbar/tar.gz/$_commit
+	niri-$_niri_commit.tar.gz::https://codeload.github.com/PorQ-Pine/niri/tar.gz/$_niri_commit
+	"
+builddir="$srcdir/$pkgname-$_commit"
+
+prepare() {
+	default_prepare
+
+	# Reconstruct the niri path dep (see header comment).
+	ln -s "niri-$_niri_commit" "$srcdir/niri"
+
+	# Unlocked fetch: refreshes the stale niri-ipc/serde_json lock entries
+	# against the pinned fork (see header comment).
+	cargo fetch --target="$CTARGET"
+}
+
+build() {
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/eww-niri-taskbar \
+		"$pkgdir"/usr/bin/eww-niri-taskbar
+}
+
+sha512sums="
+152c5a65347d2c4dbc87c85b7d18947531747fbf39e06b35f82b41d8334839fc715de6856e54a5fe31b1014a243dab2b9eee93d583c55106be9ad7c975e05bf8  eww-niri-toolbar-51e01ee45422aae91c3956ed4f233d0b165e7b11.tar.gz
+444bd5d62a7b7cfea4e9667e12274742d4147e8bcbc2351859fd9cd9d503e526003164742d13c0eb095318723210c9f837cf02cf71f1dcddfa528c95d9d12267  niri-0e30f33bc5fa63a017992465c049d0ec4fd3b137.tar.gz
+"
