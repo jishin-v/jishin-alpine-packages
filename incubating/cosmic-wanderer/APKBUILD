@@ -68,7 +68,7 @@ source="
 	$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/Cosmic-Wanderer/tar.gz/$_commit
 	niri-$_niri_commit.tar.gz::https://codeload.github.com/PorQ-Pine/niri/tar.gz/$_niri_commit
 	"
-builddir="$srcdir/$pkgname-$_commit"
+builddir="$srcdir/Cosmic-Wanderer-$_commit"
 
 prepare() {
 	default_prepare
