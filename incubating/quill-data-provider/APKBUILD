@@ -1,0 +1,149 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# quill-data-provider — the Quill OS shell's data layer daemon. Aggregates
+# battery, backlight (cool/warm), Bluetooth, network, volume, media player,
+# dunst notifications, gestures, settings-menu, virtual-keyboard state and
+# the e-ink window-hint state (window geometry via niri's IPC + the
+# pinenote-service D-Bus bridge), and serves it over unix sockets in
+# /tmp/eww_data/ in eww's `deflisten` protocol.
+#
+# The repo is NOT a cargo workspace: five independent crates, each with its
+# own Cargo.lock, sharing path deps (enums, quill-data-provider-lib). This
+# aport builds three of them:
+#   * quill-data-provider  — the daemon (main package)
+#   * eww-data-requester   — eww-side client: `eww-data-requester listen
+#                            <topic>` / `send <request>` (subpackage)
+#   * eink-window-settings — egui/eframe GUI tool to edit the per-window
+#                            e-ink hint rules (subpackage)
+#
+# The daemon's niri-ipc path dep (../../niri/niri-ipc/) resolves against
+# quillstrap's os/gui checkout layout, i.e. $srcdir/niri/niri-ipc from
+# $builddir/quill-data-provider. The PorQ niri fork tarball extracts to
+# $srcdir/niri-<sha>, so prepare() just symlinks it into place (same idiom
+# as charon's gitlink submodules, but cheaper — one symlink). The fork's
+# niri-ipc carries unreleased upstream API (WindowGeometries/WindowGeometry,
+# MaxBpc) that the window-hint logic needs, so it cannot be replaced by the
+# crates.io crate.
+#
+# The daemon itself is a session process with no D-Bus/systemd face: Quill
+# spawns it from niri's config (`spawn-sh-at-startup "quill-data-provider"`);
+# on pmOS either do the same or run it from your session manager.
+#
+# Note: quill-data-provider-lib pulls eframe/egui into the daemon build
+# (only for its type definitions — the daemon never opens a window), so this
+# aport builds the winit/wayland/x11 stack too. winit's wayland backend
+# links libwayland-client (build: wayland-dev) and libxkbcommon
+# (build: libxkbcommon-dev); the GL loader is dlopen-based, no mesa headers
+# needed.
+pkgname=quill-data-provider
+pkgver=0.1.0_git20260701
+pkgrel=0
+pkgdesc="Quill OS shell data-provider daemon (eww deflisten backend)"
+url="https://github.com/PorQ-Pine/quill-data-provider"
+arch="aarch64 x86_64"
+# Upstream ships no license file (checked the pinned commit); treat as
+# Quill-OS-specific licensing for this DIY repo.
+license="LicenseRef-Quill"
+subpackages="
+	eww-data-requester
+	eink-window-settings
+	"
+# Functional runtime deps beyond abuild's so: autoscan (the so: scan picks
+# up libwayland-client/libxkbcommon for the daemon + settings tool).
+# Everything listed is shelled out to by hardcoded binary name:
+#   * networkmanager-cli — nmcli (wifi state)
+#   * bluez              — bluetoothctl (BT state/monitor)
+#   * busctl             — talks to pinenote-service's D-Bus interface
+#                          (org.pinenote.Ebc1) for e-ink hints
+#   * dunst              — dunstctl (notification state)
+#   * pamixer            — volume get/set
+#   * pulseaudio-utils   — pactl subscribe (works with pipewire-pulse)
+#   * playerctl          — MPRIS monitor
+#   * iproute2           — `ip` (address info)
+#   * psmisc             — killall (widget reloads)
+#   * util-linux-misc    — rfkill (radios)
+#   * eww                — `eww update` pushes refreshed state to widgets
+# Optional, not enforced (log errors only if missing): gammastep (not in
+# Alpine v3.24 at all), squeekboard (virtual-keyboard state), niri
+# (window-hint state via the fork's niri-ipc protocol), a session D-Bus
+# with pinenote-service running.
+depends="
+	networkmanager-cli
+	bluez
+	busctl
+	dunst
+	pamixer
+	pulseaudio-utils
+	playerctl
+	iproute2
+	psmisc
+	util-linux-misc
+	eww
+	"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	libxkbcommon-dev
+	wayland-dev
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring).
+# `!check`: no test suites in any of the crates.
+options="net !check"
+_commit=a43b3b921c65799652a07c39a7e8d235813be64e
+_niri_commit=0e30f33bc5fa63a017992465c049d0ec4fd3b137
+source="
+	$pkgname-$_commit.tar.gz::https://codeload.github.com/PorQ-Pine/quill-data-provider/tar.gz/$_commit
+	niri-$_niri_commit.tar.gz::https://codeload.github.com/PorQ-Pine/niri/tar.gz/$_niri_commit
+	"
+builddir="$srcdir/$pkgname-$_commit"
+
+prepare() {
+	default_prepare
+
+	# Reconstruct the niri path dep (see header comment): from
+	# $builddir/quill-data-provider, ../../niri/niri-ipc is
+	# $srcdir/niri/niri-ipc.
+	ln -s "niri-$_niri_commit" "$srcdir/niri"
+
+	# Each crate is an independent cargo project with its own Cargo.lock.
+	local dir
+	for dir in quill-data-provider eww-data-requester eink-window-settings; do
+		(cd "$dir" && cargo fetch --target="$CTARGET" --locked)
+	done
+}
+
+build() {
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	local dir
+	for dir in quill-data-provider eww-data-requester eink-window-settings; do
+		(cd "$dir" && cargo auditable build --frozen --release)
+	done
+}
+
+package() {
+	install -D -m755 quill-data-provider/target/release/quill-data-provider \
+		"$pkgdir"/usr/bin/quill-data-provider
+	install -D -m755 eww-data-requester/target/release/eww-data-requester \
+		"$pkgdir"/usr/bin/eww-data-requester
+	install -D -m755 eink-window-settings/target/release/eink-window-settings \
+		"$pkgdir"/usr/bin/eink-window-settings
+}
+
+eww_data_requester() {
+	pkgdesc="Client for quill-data-provider sockets (eww deflisten helper)"
+	# Pure Rust, std only — no deps of its own.
+	depends=""
+	amove usr/bin/eww-data-requester
+}
+
+eink_window_settings() {
+	pkgdesc="egui tool to edit Quill OS per-window e-ink hint settings"
+	amove usr/bin/eink-window-settings
+}
+
+sha512sums="
+70ab29058f270a624f1f6551838c1f3624021f36f60f17f6095227f07a990327968dbd237bdfa92a13d56a6d481ea2c5bf77e899470bf1ba27f0f4f13d811841  quill-data-provider-a43b3b921c65799652a07c39a7e8d235813be64e.tar.gz
+444bd5d62a7b7cfea4e9667e12274742d4147e8bcbc2351859fd9cd9d503e526003164742d13c0eb095318723210c9f837cf02cf71f1dcddfa528c95d9d12267  niri-0e30f33bc5fa63a017992465c049d0ec4fd3b137.tar.gz
+"
