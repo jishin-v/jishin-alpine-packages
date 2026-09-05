@@ -1,0 +1,131 @@
+# nvchecker config — track upstream versions of the aports in incubating/.
+#
+# One section per package (named after incubating/<pkgname>). Two tracking
+# styles, matching how each APKBUILD pins its source:
+#
+#   * tag-based     — newest release tag; the "v" tag prefix is stripped
+#                     (`prefix = "v"`) so the reported version matches pkgver.
+#   * commit-based  — the fork's default-branch tip (`git ls-remote HEAD`).
+#                     The "version" is a commit sha: any change means there are
+#                     new upstream commits, and the update sets `_commit=` plus
+#                     the `_git<date>` pkgver suffix (date = commit date).
+#
+# Everything uses the plain `git` source (ls-remote), including GitHub, so no
+# API tokens or rate limits are involved.
+#
+# Usage (see AGENTS.md "Upstream version checking" for the full workflow):
+#
+#   nvchecker -c .nvchecker.toml          # fetch + report ([I] "updated" lines)
+#   nvcmp -c .nvchecker.toml             # re-print pending updates, no fetching
+#   nvtake <name>... -c .nvchecker.toml  # acknowledge after updating a package
+#
+# old_ver.json is the committed baseline (currently packaged versions);
+# new_ver.json is per-run output and not committed.
+
+[__config__]
+oldver = "old_ver.json"
+newver = "new_ver.json"
+
+# --- tag-based (upstream release tags) ---------------------------------------
+
+[aevum]
+source = "git"
+git = "https://git.sr.ht/~undeadleech/aevum"
+include_regex = "^v\\d+\\.\\d+\\.\\d+$"
+prefix = "v"
+
+[charon]
+source = "git"
+git = "https://git.sr.ht/~undeadleech/charon"
+include_regex = "^v\\d+\\.\\d+\\.\\d+$"
+prefix = "v"
+
+[dirge]
+source = "git"
+git = "https://github.com/dirge-code/dirge.git"
+include_regex = "^v\\d+\\.\\d+\\.\\d+$"
+prefix = "v"
+
+[kumo]
+source = "git"
+git = "https://git.sr.ht/~undeadleech/kumo"
+include_regex = "^v\\d+\\.\\d+\\.\\d+$"
+prefix = "v"
+
+[maki]
+source = "git"
+git = "https://github.com/tontinton/maki.git"
+include_regex = "^v\\d+\\.\\d+\\.\\d+$"
+prefix = "v"
+
+[noctalia]
+# Tags: v5.0.1, v5.0.0-beta.7, v5.0.0-beta1, ... Note the reported version
+# keeps upstream spelling; Alpine pkgver respells `-` as `_` (5.0.0-beta.7
+# -> pkgver 5.0.0_beta7).
+source = "git"
+git = "https://github.com/noctalia-dev/noctalia.git"
+include_regex = "^v\\d+\\.\\d+\\.\\d+(-beta\\.?\\d+)?$"
+prefix = "v"
+
+[nono]
+source = "git"
+git = "https://github.com/nolabs-ai/nono.git"
+include_regex = "^v\\d+\\.\\d+\\.\\d+$"
+prefix = "v"
+
+[wpewebkit-kumo]
+# chrisduerr's WebKit fork for kumo. REPORT-ONLY: bumping means regenerating
+# the 220 MB bulk-repo source tarball first — see PLAN.md.
+source = "git"
+git = "https://github.com/chrisduerr/WebKit.git"
+include_regex = "^v\\d+\\.\\d+\\.\\d+(\\.\\d+)?$"
+prefix = "v"
+
+# --- commit-based (default-branch HEAD snapshots) -----------------------------
+# Any sha change = new upstream commits to pick up.
+
+[cosmic-wanderer]
+source = "git"
+git = "https://github.com/PorQ-Pine/Cosmic-Wanderer.git"
+use_commit = true
+
+[eww]
+source = "git"
+git = "https://github.com/PorQ-Pine/eww.git"
+use_commit = true
+
+[eww-config]
+source = "git"
+git = "https://github.com/PorQ-Pine/eww-config.git"
+use_commit = true
+
+[eww-niri-toolbar]
+source = "git"
+git = "https://github.com/PorQ-Pine/eww-niri-toolbar.git"
+use_commit = true
+
+[orbit]
+source = "git"
+git = "https://github.com/PorQ-Pine/orbit.git"
+use_commit = true
+
+[pinenote-service]
+source = "git"
+git = "https://github.com/PorQ-Pine/pinenote-service.git"
+use_commit = true
+
+[procedural-wallpapers-rs]
+source = "git"
+git = "https://github.com/PorQ-Pine/procedural-wallpapers-rs.git"
+use_commit = true
+
+[quill-configs-pinenote]
+# Upstream repo is rootfs-configs, not the pkgname.
+source = "git"
+git = "https://github.com/PorQ-Pine/rootfs-configs.git"
+use_commit = true
+
+[quill-data-provider]
+source = "git"
+git = "https://github.com/PorQ-Pine/quill-data-provider.git"
+use_commit = true

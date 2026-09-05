@@ -3,3 +3,4 @@
 !/.keys/.keep
 **/src/*
 **/pkg/*
+/new_ver.json

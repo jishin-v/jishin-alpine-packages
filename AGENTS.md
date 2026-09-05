@@ -70,6 +70,40 @@ Notes for coding agents working in this repo.
 - `buildrepo` skips a package whose apk is already published in `REPODEST`;
   bump `pkgrel` to force a rebuild.
 
+## Upstream version checking (nvchecker)
+
+`.nvchecker.toml` tracks every aport's upstream: release **tags** for the
+version-release packages, or the default-branch **HEAD sha** for the
+`_commit=`-pinned snapshots. The committed `old_ver.json` is the baseline
+(currently packaged versions); `new_ver.json` is per-run output (gitignored).
+
+One command, from the repo root, fetches and reports — `[I] … updated from X
+to Y` lines are pending updates (exit code stays 0 for those; `[E]` lines /
+nonzero rc mean the check itself failed):
+
+```sh
+nix run nixpkgs#nvchecker -- -c .nvchecker.toml   # NixOS dev host
+nvchecker -c .nvchecker.toml                      # if installed (Alpine: apk add nvchecker)
+```
+
+`nvcmp -c .nvchecker.toml` reprints just the pending list without refetching
+(on Nix: `nix shell nixpkgs#nvchecker -c nvcmp …`). Updating a flagged
+package:
+
+1. Tag-based: set `pkgver` to the new version, respelling for Alpine (`-` →
+   `_`, e.g. noctalia `5.0.0-beta.7` → `5.0.0_beta7`), and fix the tag in
+   `source=`. Commit-based: set `_commit` to the new sha and the `_git<date>`
+   pkgver suffix to that commit's date (`git clone --filter=blob:none
+   --no-checkout <url> /tmp/x && git -C /tmp/x show -s --format=%cs <sha>`).
+2. Refresh `sha512sums=` for changed remote sources (download + `sha512sum`;
+   `abuild checksum` needs an Alpine host). The pre-commit hook validates.
+3. `nvtake <pkgname> -c .nvchecker.toml` to advance the baseline, and commit
+   the updated `old_ver.json` together with the package bump.
+
+`wpewebkit-kumo` is **report-only**: bumping requires regenerating the 220 MB
+bulk-repo tarball first (PLAN.md). When adding a new aport, add a section to
+`.nvchecker.toml` and seed the entry in `old_ver.json`.
+
 ## Local environment caveat
 
 The dev host may not be Alpine (it can be NixOS), so `apk`/`abuild` may be

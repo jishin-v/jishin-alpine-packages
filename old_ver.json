@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "data": {
+    "aevum": {
+      "version": "2.3.1"
+    },
+    "charon": {
+      "version": "1.8.0"
+    },
+    "cosmic-wanderer": {
+      "version": "5a8a3563a5b6c6f322b9427fa4402053cae8f31a"
+    },
+    "dirge": {
+      "version": "0.18.7"
+    },
+    "eww": {
+      "version": "2d3336e609ed15581f82165fd023c31a85b9876f"
+    },
+    "eww-config": {
+      "version": "ce58791e07b2cbf3188f83a29f3aadb72a603b11"
+    },
+    "eww-niri-toolbar": {
+      "version": "51e01ee45422aae91c3956ed4f233d0b165e7b11"
+    },
+    "kumo": {
+      "version": "1.8.2"
+    },
+    "maki": {
+      "version": "0.5.0"
+    },
+    "noctalia": {
+      "version": "5.0.0-beta.7"
+    },
+    "nono": {
+      "version": "0.75.0"
+    },
+    "orbit": {
+      "version": "165e6bb3e69c11caea92080947fc4eda1f91c6dc"
+    },
+    "pinenote-service": {
+      "version": "d19573beb26fc12811f0a652f429bbf9ac45cfec"
+    },
+    "procedural-wallpapers-rs": {
+      "version": "9be1ec048a30efc983d0d1054fb7c1eb8f41f3c1"
+    },
+    "quill-configs-pinenote": {
+      "version": "ad3e50abc7e68f037d5fecb90a4620637f5b2793"
+    },
+    "quill-data-provider": {
+      "version": "a43b3b921c65799652a07c39a7e8d235813be64e"
+    },
+    "wpewebkit-kumo": {
+      "version": "2.52.4"
+    }
+  }
+}

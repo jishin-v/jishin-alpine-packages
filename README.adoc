@@ -35,6 +35,23 @@ To use them, run the following command after cloning this repository:
 git config --local core.hooksPath .githooks
 
 
+== Upstream version checking
+
+Upstream releases are tracked with https://github.com/lilydjwg/nvchecker[nvchecker]:
+`.nvchecker.toml` holds one entry per package (release tags, or the default-branch
+HEAD for `_commit=` snapshots), and `old_ver.json` records what is currently
+packaged.
+
+Run a check and see what is outdated (pending updates show as
+`updated from X to Y` lines):
+
+[source, sh]
+nvchecker -c .nvchecker.toml     # on Alpine: apk add nvchecker
+nvcmp -c .nvchecker.toml         # reprint just the outdated list
+
+See `AGENTS.md` ("Upstream version checking") for the update workflow.
+
+
 == How to setup your own repository
 :remote-user: ci
 :remote-host: alpine.example.org
