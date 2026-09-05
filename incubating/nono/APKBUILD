@@ -1,0 +1,97 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# nono — capability-based sandbox for running AI coding agents (Claude Code,
+# Codex, Pi, …) under least privilege with zero setup: Landlock on Linux
+# (Seatbelt on macOS), no daemon, no container, no VM. From the Sigstore
+# folks (nolabs-ai).
+#
+# Scope: CLI only. Upstream is a cargo workspace (crates/nono lib,
+# crates/nono-cli, crates/nono-proxy, crates/nono-test-support, bindings/c C
+# SDK); this aport builds and ships just the `nono` binary via
+# `cargo build -p nono-cli` — the nono + nono-proxy libs compile as its
+# dependencies, while the C SDK (nono-ffi/cbindgen) and the test-support
+# crate are skipped entirely.
+#
+# Features: upstream default surface, i.e. `system-keyring` ON. The Linux
+# keyring backend is pure-Rust zbus (Secret Service over the D-Bus socket),
+# with deliberately NO libdbus link — upstream's release CI even fails the
+# build if the binary grows a libdbus NEEDED entry. Keyless (Fulcio/Rekor)
+# instruction-file attestation stays enabled, as in the release binaries.
+#
+# Native code is compiled from vendored sources during `cargo build` (no
+# system C/C++ libs are linked at runtime):
+#   * aws-lc-sys 0.44 (via aws-lc-rs — direct dep for signing-key PKCS#8
+#     serialization, and the TLS backend under rustls/ureq/tungstenite) —
+#     AWS-LC/BoringSSL crypto, built with cmake + perl (perlasm). Same story
+#     as dirge's aws-lc-sys.
+#   * ring — small asm/C bits for the rustls/quinn paths.
+#   * typify/syn/prettyplease (nono lib build.rs) — pure-Rust codegen from
+#     the capability-manifest JSON Schema.
+#
+# MSRV 1.95 (edition 2024); Alpine 3.24 rust is 1.96.1 — OK.
+#
+# Runtime: nothing beyond abuild's so: autoscan — the binary links only musl
+# libc (+ libgcc_s), since aws-lc/ring are statically linked and the Secret
+# Service is spoken over the D-Bus socket in pure Rust. The 1Password (`op`)
+# / Bitwarden (`bw`) / Secret Service (gnome-keyring) credential providers,
+# `git` (profile git-worktree & dynamic-path tokens), and `xdg-open` are
+# resolved lazily per profile/command and are NOT enforced — matching
+# upstream's .deb metadata (depends: $auto; recommends: 1password-cli |
+# gnome-keyring).
+pkgname=nono
+pkgver=0.75.0
+pkgrel=0
+pkgdesc="Zero-setup, zero-latency least-privilege sandbox for running AI agents"
+url="https://github.com/nolabs-ai/nono"
+arch="aarch64 x86_64"
+license="Apache-2.0"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	clang-dev
+	cmake
+	perl
+	pkgconf
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring —
+# same idiom as the sibling dirge/kumo/aevum/charon aports).
+# `!check`: the integration suite (tests/integration) drives the live nono
+# registry + sandbox fixtures and needs the nono-test-support harness; the
+# unit tests shell out to real git. Skipped like the other agent aports.
+options="net !check"
+source="$pkgname-$pkgver.tar.gz::https://github.com/nolabs-ai/nono/archive/refs/tags/v$pkgver.tar.gz"
+builddir="$srcdir/$pkgname-$pkgver"
+
+prepare() {
+	default_prepare
+	# Populate the cargo cache for the host target (deterministic per
+	# Cargo.lock). CI builds natively per-arch, so fetching the host target is
+	# sufficient.
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# Clang for the vendored C/asm (aws-lc, ring): matches the rest of this
+	# repo and avoids GCC format-hardening fatal errors on AWS-LC. The cc
+	# crate and aws-lc-sys's cmake build honour CC/CXX.
+	export CC=clang
+	export CXX=clang++
+
+	# -p nono-cli: only the CLI binary (plus its nono/nono-proxy lib deps —
+	# the C SDK and test-support crates stay out of the build).
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	# Default features = upstream release surface (system-keyring, pure-Rust
+	# zbus Secret Service — no libdbus).
+	cargo auditable build --frozen --release -p nono-cli
+}
+
+package() {
+	install -D -m755 target/release/nono "$pkgdir"/usr/bin/nono
+}
+
+sha512sums="
+9699e84bca16304b190655f369f66e8b0be3e2f08439a03ceb579230718a03ea65d341f31fc714c1b6411095b07bb05c50a24d027d773b36ded01b56983990a8  nono-0.75.0.tar.gz
+"
