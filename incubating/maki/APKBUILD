@@ -1,0 +1,103 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# maki — AI coding agent with a native Rust TUI (ratatui, no JS), extendable
+# by Neovim-like Lua plugins. The builtin Lua plugins under `plugins/` are
+# embedded into the binary at compile time via `include_dir!`, so the package
+# ships a single /usr/bin/maki with no /usr/share data dir.
+#
+# Native code is compiled from vendored sources during `cargo build` (no
+# system C/C++ libs are linked at runtime — the binary links only libc +
+# libgcc_s, both base):
+#   * OpenSSL 3.6.x        — `openssl-src` (needs perl for Configure); pulled
+#                            in by curl-sys via isahc's `static-ssl` feature.
+#   * curl 8.21 + nghttp2  — `curl-sys` `static-curl` / `libnghttp2-sys`
+#                            (isahc is the HTTP stack; nothing links the
+#                            system libcurl).
+#   * zlib                 — `libz-sys` static, for the curl build.
+#   * Luau (C++)           — `mlua` `luau` + `luau-jit` features.
+#   * tree-sitter          — ~30 grammar crates (one small C crate each) used
+#                            by the `index` tool's language skeletons.
+#
+# Cargo.lock pins two git deps (`[patch.crates-io]` crossterm rev for
+# bracketed-paste decoding + pydantic/monty for the python-ish interpreter
+# behind `code_execution`), so `cargo fetch` in prepare() reaches crates.io
+# AND clones two GitHub repos over git+https — `options="net"` (DIY repo, no
+# vendoring; same idiom as the sibling dirge/kumo/aevum/charon aports).
+#
+# Toolchain: MSRV 1.88 / edition 2024 (Alpine 3.24 ships rust 1.96, fine).
+# CC/CXX are pointed at clang (repo idiom, see dirge) to dodge GCC
+# format-hardening fatal errors on the vendored C/C++ under abuild's
+# `-Werror=format-security` CFLAGS.
+pkgname=maki
+pkgver=0.5.0
+pkgrel=0
+pkgdesc="AI coding agent with a native Rust TUI and Neovim-like Lua plugins"
+url="https://github.com/tontinton/maki"
+arch="aarch64 x86_64"
+license="MIT"
+# Functional runtime deps beyond abuild's so: autoscan. The release binary
+# links only libc.musl-*.so.1 + libgcc_s.so.1 (both base), so there are no
+# extra so: deps to add. Both deps below are shelled out to by hardcoded
+# binary name (Command::new("…")) and so are mandatory, not merely recommended:
+#   * bash — the default command-execution tool and maki.fn.jobstart's shell
+#            (hardcoded "bash -c" on unix; setsid/timeout handling).
+#   * git  — core agent git operations and maki.pack, which installs Lua
+#            plugin packages from git repositories (new in v0.5.0).
+# Optional, not enforced: tmux (terminal-capability detection degrades
+# gracefully without it), ripgrep / rtk (used by Lua plugins' examples when
+# present), ssh (acp/remotes).
+depends="bash git"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	clang-dev
+	perl
+	"
+# `net`: cargo fetch in prepare() reaches crates.io + github.com (git deps).
+# `!check`: the workspace test suite expects cargo-nextest, ripgrep on PATH
+# and network/provider fixtures; upstream's own release job doesn't run it.
+options="net !check"
+source="$pkgname-$pkgver.tar.gz::https://github.com/tontinton/maki/archive/refs/tags/v$pkgver.tar.gz"
+builddir="$srcdir/$pkgname-$pkgver"
+
+prepare() {
+	default_prepare
+	# Populate the cargo cache for the host target (deterministic per
+	# Cargo.lock, including the two git deps). CI builds natively per-arch,
+	# so fetching the host target is sufficient.
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# Use Clang (matches the rest of this repo; avoids GCC format-hardening
+	# fatal errors on vendored C/C++ such as curl/OpenSSL/Luau). The cc/cxx
+	# crates inherit CC/CXX, and openssl-src's perl Configure honours them too.
+	export CC=clang
+	export CXX=clang++
+
+	# Upstream's .cargo/config.toml adds `-lgcc` for aarch64-unknown-linux-musl
+	# (rustup's self-contained musl triple) because Luau's aarch64 codegen
+	# (mlua `luau-jit`) calls __clear_cache from libgcc, which rustc's
+	# -nodefaultlibs musl link would otherwise drop. Alpine's native triple is
+	# aarch64-alpine-linux-musl, which that config section does NOT match —
+	# mirror the flag here so the link can't fail either way.
+	case "$CARCH" in
+		aarch64*) export RUSTFLAGS="-C link-arg=-lgcc" ;;
+	esac
+
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	# Plain `cargo build` at the workspace root builds just the `maki` bin
+	# (maki-docgen & friends are dev-time generators, not installed).
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/$pkgname "$pkgdir"/usr/bin/$pkgname
+}
+
+sha512sums="
+fbb92aea140db9489adb7bf2657cfbbd86161b83019a849bbc57813537bb106554d72e3d60716daba351eed554dedc5b1117ea5655a7b163e4944d7153b3a9ee  maki-0.5.0.tar.gz
+"
