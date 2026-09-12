@@ -7,9 +7,11 @@
 # `module_path!()` / RUST_LOG target) stays `dirge`.
 #
 # Feature set: this aport builds dirge's batteries-included default surface —
-# MCP, LSP, ACP, all 12 tree-sitter language adapters, slash-completion, and
-# the MCP server (`dirge mcp`) — EXCEPT the Janet `plugin` feature. That one
-# feature is dropped for the same reason dirge itself drops it on Windows
+# MCP, LSP, ACP, all 15 tree-sitter language adapters, slash-completion, and
+# the MCP server (`dirge mcp`) — EXCEPT the Janet `plugin` feature. Since
+# v0.25.5 the default adds two more grammars (Swift, Mojo), mirrored in
+# `_features`. The `plugin` feature is dropped for the same reason dirge itself
+# drops it on Windows
 # (see Cargo.toml's `windows-default`): enabling `plugin` pulls `janetrs` ->
 # `evil-janet`, whose build script runs `bindgen` 0.70 over Janet's C headers
 # at build time, and the generated FFI structs come out OPAQUE (every Janet
@@ -30,7 +32,7 @@
 #                                    by `rustls` (reqwest/rig TLS backend); no
 #                                    system OpenSSL is required.
 pkgname=dirge
-pkgver=0.18.7
+pkgver=0.25.5
 pkgrel=0
 pkgdesc="Minimal, fast pure-Rust coding agent with persistent memory"
 url="https://github.com/dirge-code/dirge"
@@ -85,6 +87,8 @@ _features="
 	semantic-elixir
 	semantic-sql
 	semantic-dafny
+	semantic-swift
+	semantic-mojo
 	slash-completion
 	mcp-server
 	"
@@ -115,5 +119,5 @@ package() {
 }
 
 sha512sums="
-a05433dc813963243f2ffa5ab5c1d17f95aec13d8a25426099a733a11daf71bc15b06c866c5a39292b21f7e266a81b8ea4a64031bdb41f6147e3b63b72069818  dirge-0.18.7.tar.gz
+3eff3dbd619ffe496a617cb9a7b82cebe8206b1fcfdc257c399bd6353d97d4a3b0ce769d4a937f6ddbfd43d72225d016e9f6fdb07335cd1174087bb8621c77b5  dirge-0.25.5.tar.gz
 "

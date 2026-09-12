@@ -40,7 +40,7 @@
 # upstream's .deb metadata (depends: $auto; recommends: 1password-cli |
 # gnome-keyring).
 pkgname=nono
-pkgver=0.75.0
+pkgver=0.77.0
 pkgrel=0
 pkgdesc="Zero-setup, zero-latency least-privilege sandbox for running AI agents"
 url="https://github.com/nolabs-ai/nono"
@@ -93,5 +93,5 @@ package() {
 }
 
 sha512sums="
-9699e84bca16304b190655f369f66e8b0be3e2f08439a03ceb579230718a03ea65d341f31fc714c1b6411095b07bb05c50a24d027d773b36ded01b56983990a8  nono-0.75.0.tar.gz
+05a662c14401a08011f31cb540a797441598d70b9c965385775a19fc12e61baac5f3a3dba4dda9b4169818464cdb898919889a0bb9f89d3ba9f202e24a481af3  nono-0.77.0.tar.gz
 "

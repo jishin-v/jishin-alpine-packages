@@ -13,7 +13,7 @@
 # `python3` and `git` on PATH (the bundled `gn` ships with the Skia source
 # tree). gcc/g++/libstdc++-dev come from the auto-added `build-base`.
 pkgname=charon
-pkgver=1.8.0
+pkgver=1.9.0
 pkgrel=0
 pkgdesc="Wayland mobile maps & navigation application"
 url="https://git.sr.ht/~undeadleech/charon"
@@ -65,7 +65,8 @@ makedepends="
 options="net !check"
 # charon pins three git submodules which a source tarball does not contain.
 # Fetched as separate GitHub archives and relocated into the source tree in
-# prepare(). Pinned to the exact gitlinks charon v1.8.0 records.
+# prepare(). Pinned to the exact gitlinks charon v1.9.0 records (identical to
+# v1.8.0's — the submodules did not move).
 _geocoder_nlp_commit="56cbd6692a70855909580ab3166bfa23df41aa54"
 _libpostal_commit="25099c506612b34b23b1bfe286ca6321fcf06f35"
 _sqlite3pp_commit="5cf99ae80873d78b2c52296f51fda2f0d8b11e0d"
@@ -165,7 +166,7 @@ package() {
 }
 
 sha512sums="
-bc8357f0f3375cd965b822a7cc2d79b10c94c640ea6764ba468c904de906cc363754602e87cce7cbbbb34d4ae5114aabd653f3881be069e7cedaecebdda17668  charon-1.8.0.tar.gz
+bbe934981824356ff5abe4d141d20b02715e6fed95cc3826f94abc0325dde67fa3d96dfd7b86ab8aa6982eefc0f9529a741937eeb4837d94a79af9c7bbbe2a4c  charon-1.9.0.tar.gz
 db1d6fb98610ef4e436b004c67a6a64c537fd309a685c59775a6d4ee324dbf509a42fc29f05c256166aa151b61c9b033c37dd4a6b7b95ae7b497e60131c48d48  geocoder-nlp-56cbd6692a70855909580ab3166bfa23df41aa54.tar.gz
 d52e3e3b6fb11b956a1dbe1f17c0146c5fdc6dded4b42af8634292ae804e75b5b063f7a65187cea893870843eab497b5305236f0f1161beb1ca975dd0f124064  libpostal-25099c506612b34b23b1bfe286ca6321fcf06f35.tar.gz
 aa79be161901ecf5f0cb8e8212d8f5150268383190b2a2a087e16819203a34e3a2158dc774c600efa70475d62dbe50c86c0fb4a89f37dab2f93b912dcb1af9a5  sqlite3pp-5cf99ae80873d78b2c52296f51fda2f0d8b11e0d.tar.gz

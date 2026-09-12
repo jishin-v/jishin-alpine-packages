@@ -5,13 +5,17 @@
       "version": "2.3.1"
     },
     "charon": {
-      "version": "1.8.0"
+      "version": "1.9.0",
+      "gitref": "refs/tags/v1.9.0",
+      "revision": "47c2c8aab6508ee2d693b5e29866b4d2121b952c"
     },
     "cosmic-wanderer": {
       "version": "5a8a3563a5b6c6f322b9427fa4402053cae8f31a"
     },
     "dirge": {
-      "version": "0.18.7"
+      "version": "0.25.5",
+      "gitref": "refs/tags/v0.25.5",
+      "revision": "5adedc67ea11ae6ca8df42fb1464edb4981a7353"
     },
     "eww": {
       "version": "2d3336e609ed15581f82165fd023c31a85b9876f"
@@ -23,16 +27,24 @@
       "version": "51e01ee45422aae91c3956ed4f233d0b165e7b11"
     },
     "kumo": {
-      "version": "1.8.2"
+      "version": "1.9.1",
+      "gitref": "refs/tags/v1.9.1",
+      "revision": "7054a00e812da5802370310bfc6aedde0703a986"
     },
     "maki": {
-      "version": "0.5.0"
+      "version": "0.5.3",
+      "gitref": "refs/tags/v0.5.3",
+      "revision": "df9745454bb1cff3373605fce327a5a50fc23fdd"
     },
     "noctalia": {
-      "version": "5.0.0-beta.7"
+      "version": "5.1.0",
+      "gitref": "refs/tags/v5.1.0",
+      "revision": "2a8d7a100017e5ec6e69218efc9b8a9dfd5b845c"
     },
     "nono": {
-      "version": "0.75.0"
+      "version": "0.77.0",
+      "gitref": "refs/tags/v0.77.0",
+      "revision": "69a7dc8e4d1830552d661bf2fb952a6fc5ab3b2a"
     },
     "orbit": {
       "version": "165e6bb3e69c11caea92080947fc4eda1f91c6dc"

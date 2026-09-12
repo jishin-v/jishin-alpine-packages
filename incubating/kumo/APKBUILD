@@ -11,7 +11,7 @@
 # `community/helix` idiom: `options="net"` + `cargo fetch --locked` in prepare,
 # then `cargo build --frozen` (offline) in build. DIY repo; no vendoring.
 pkgname=kumo
-pkgver=1.8.2
+pkgver=1.9.1
 pkgrel=0
 pkgdesc="Wayland mobile web browser (WebKit/WPE + Servo engines)"
 url="https://git.sr.ht/~undeadleech/kumo"
@@ -97,16 +97,15 @@ build() {
 package() {
 	install -D -m755 target/release/kumo "$pkgdir"/usr/bin/kumo
 
-	# Desktop integration (all files ship in-tree). The metainfo's launchable
-	# desktop-id is org.catacombing.kumo.desktop; the .desktop's Icon= is Kumo.
+	# Desktop integration (all files ship in-tree). v1.9.1 dropped the
+	# metainfo/AppStream file (neither org.catacombing.kumo.metainfo.xml nor an
+	# appdata.xml ships in the tree); the .desktop's Icon= is Kumo.
 	install -D -m644 Kumo.desktop \
 		"$pkgdir"/usr/share/applications/org.catacombing.kumo.desktop
 	install -D -m644 logo.svg \
 		"$pkgdir"/usr/share/icons/hicolor/scalable/apps/Kumo.svg
-	install -D -m644 org.catacombing.kumo.metainfo.xml \
-		"$pkgdir"/usr/share/metainfo/org.catacombing.kumo.metainfo.xml
 }
 
 sha512sums="
-60b3131cb6167c3b00075f781d2026479494fc168fe364920591a1fafabc8ce32b12fd5fc7dfb884195c5f15226b765813573df1e3623c22e72456a0d895e320  kumo-1.8.2.tar.gz
+2943fe9720f72f6aa357b00dc280f2a295fd25a9435cda51ca47806ddfb9f222e1c7f403c0bbf8155be2c628c8d0b008b852f05cf8e0474c9195fa443a208890  kumo-1.9.1.tar.gz
 "

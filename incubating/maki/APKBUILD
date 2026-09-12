@@ -30,7 +30,7 @@
 # format-hardening fatal errors on the vendored C/C++ under abuild's
 # `-Werror=format-security` CFLAGS.
 pkgname=maki
-pkgver=0.5.0
+pkgver=0.5.3
 pkgrel=0
 pkgdesc="AI coding agent with a native Rust TUI and Neovim-like Lua plugins"
 url="https://github.com/tontinton/maki"
@@ -99,5 +99,5 @@ package() {
 }
 
 sha512sums="
-fbb92aea140db9489adb7bf2657cfbbd86161b83019a849bbc57813537bb106554d72e3d60716daba351eed554dedc5b1117ea5655a7b163e4944d7153b3a9ee  maki-0.5.0.tar.gz
+9c34798ed6a3749963aba4a317b5e6536d66e696c836264b36524e9888b323c270325ad58f838c212a9e0555fbe7394ee0bad30dac55837f07d16d418ea548e8  maki-0.5.3.tar.gz
 "
