@@ -1,0 +1,70 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# duh — dust-style disk usage tool written in Rust, with a twist: it can
+# persist coarse-grained disk-usage snapshots (only entries >= 100 MiB are
+# kept; smaller ones are folded into their parent's size) and diff the live
+# tree against a stored snapshot, or two stored snapshots against each other.
+#
+# This is part of the puburrow monorepo (a rolling project with no release
+# tags), which also contains the sibling wuh-wuh-worktree aport here. The
+# two aports download the SAME monorepo archive and each build its own
+# cli/<name> subdirectory out of it — bump both together: advance _commit in
+# each APKBUILD and the _git<date> pkgver suffix (date = commit date of the
+# new HEAD; the 0.1.0 prefix is each crate's Cargo.toml version).
+#
+# Runtime deps: the only external program duh drives is the `zstd`
+# executable (spawned + piped, never linked) to compress snapshots; every
+# code path falls back to uncompressed storage when it is absent, but
+# snapshots are the point of the tool, so zstd is a mandatory depends.
+# Everything else is pure Rust (clap/rayon/chrono/anyhow, no cc-built
+# crates): the binary links only libgcc_s.so.1 + libc.musl-*.so.1, both
+# auto/base, so so:-autoscan adds nothing.
+pkgname=duh
+pkgver=0.1.0_git20261007
+pkgrel=0
+pkgdesc="Dust-style disk usage tool with snapshot history and diffs"
+url="https://git.emunest.net/jishin/puburrow"
+arch="aarch64 x86_64"
+license="MIT"
+depends="zstd"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	"
+# `net`: cargo fetch in prepare() reaches crates.io (DIY repo, no vendoring —
+# same idiom as the sibling dirge/orbit aports).
+# `!check`: the tests are actually hermetic (hand-encoded snapshot fixtures +
+# tempfile, no network), but running them means a second full dev-profile
+# build of the whole dep tree; skipped per repo idiom.
+options="net !check"
+# puburrow master HEAD snapshot (commit date 2026-10-07). Gitea serves
+# commit-pinned archives at /archive/<sha>.tar.gz.
+_commit=948db188dc5f6c6e34b3c73b2f8fa0af8ba79aa5
+source="$pkgname-$_commit.tar.gz::https://git.emunest.net/jishin/puburrow/archive/$_commit.tar.gz"
+# Gitea archives extract to a top-level dir named after the repo only (no
+# ref suffix); the crate lives in a cli/ subdirectory of the monorepo.
+builddir="$srcdir/puburrow/cli/$pkgname"
+
+prepare() {
+	default_prepare
+	# Populate the cargo cache for the host target (deterministic per
+	# Cargo.lock). CI builds natively per-arch.
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	# Pure-Rust dep tree, so no CC/CXX pinning needed (repo clang idiom only
+	# matters for cc-built native code).
+	cargo auditable build --frozen --release
+}
+
+package() {
+	install -D -m755 target/release/$pkgname "$pkgdir"/usr/bin/$pkgname
+}
+
+sha512sums="
+90f5d3d6b111d593587f74924b574a40ddbef9c079ad9ac7fe0736d89dea22f1e1482d2c1eb26e4d36e2f1b9da4fd4c974d8f29fafbd4696cf1145d5978464f0  duh-948db188dc5f6c6e34b3c73b2f8fa0af8ba79aa5.tar.gz
+"

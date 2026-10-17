@@ -84,6 +84,13 @@ prefix = "v"
 # --- commit-based (default-branch HEAD snapshots) -----------------------------
 # Any sha change = new upstream commits to pick up.
 
+# duh + wuh-wuh-worktree live in the same puburrow monorepo (jishin's self-
+# hosted Gitea) and are bumped together: one sha change moves BOTH packages.
+[duh]
+source = "git"
+git = "https://git.emunest.net/jishin/puburrow.git"
+use_commit = true
+
 [cosmic-wanderer]
 source = "git"
 git = "https://github.com/PorQ-Pine/Cosmic-Wanderer.git"
@@ -128,4 +135,9 @@ use_commit = true
 [quill-data-provider]
 source = "git"
 git = "https://github.com/PorQ-Pine/quill-data-provider.git"
+use_commit = true
+
+[wuh-wuh-worktree]
+source = "git"
+git = "https://git.emunest.net/jishin/puburrow.git"
 use_commit = true

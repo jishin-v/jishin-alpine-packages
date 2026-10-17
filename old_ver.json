@@ -17,6 +17,9 @@
       "gitref": "refs/tags/v0.25.5",
       "revision": "5adedc67ea11ae6ca8df42fb1464edb4981a7353"
     },
+    "duh": {
+      "version": "948db188dc5f6c6e34b3c73b2f8fa0af8ba79aa5"
+    },
     "eww": {
       "version": "2d3336e609ed15581f82165fd023c31a85b9876f"
     },
@@ -63,6 +66,9 @@
     },
     "wpewebkit-kumo": {
       "version": "2.52.4"
+    },
+    "wuh-wuh-worktree": {
+      "version": "948db188dc5f6c6e34b3c73b2f8fa0af8ba79aa5"
     }
   }
 }
