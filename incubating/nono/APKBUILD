@@ -21,7 +21,7 @@
 #
 # Native code is compiled from vendored sources during `cargo build` (no
 # system C/C++ libs are linked at runtime):
-#   * aws-lc-sys 0.44 (via aws-lc-rs — direct dep for signing-key PKCS#8
+#   * aws-lc-sys 0.45 (via aws-lc-rs — direct dep for signing-key PKCS#8
 #     serialization, and the TLS backend under rustls/ureq/tungstenite) —
 #     AWS-LC/BoringSSL crypto, built with cmake + perl (perlasm). Same story
 #     as dirge's aws-lc-sys.
@@ -40,7 +40,7 @@
 # upstream's .deb metadata (depends: $auto; recommends: 1password-cli |
 # gnome-keyring).
 pkgname=nono
-pkgver=0.77.0
+pkgver=0.80.0
 pkgrel=0
 pkgdesc="Zero-setup, zero-latency least-privilege sandbox for running AI agents"
 url="https://github.com/nolabs-ai/nono"
@@ -93,5 +93,5 @@ package() {
 }
 
 sha512sums="
-05a662c14401a08011f31cb540a797441598d70b9c965385775a19fc12e61baac5f3a3dba4dda9b4169818464cdb898919889a0bb9f89d3ba9f202e24a481af3  nono-0.77.0.tar.gz
+c8f21010be3e154f41be7048e5eb1790b82b55abc0dbfaea720e65a0b4e6eebac4f76394866a5710cfb558fad70f2f03e400ddb341688363295644f6186015a6  nono-0.80.0.tar.gz
 "

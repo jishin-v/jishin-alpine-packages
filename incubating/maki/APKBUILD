@@ -19,18 +19,24 @@
 #   * tree-sitter          — ~30 grammar crates (one small C crate each) used
 #                            by the `index` tool's language skeletons.
 #
-# Cargo.lock pins two git deps (`[patch.crates-io]` crossterm rev for
-# bracketed-paste decoding + pydantic/monty for the python-ish interpreter
-# behind `code_execution`), so `cargo fetch` in prepare() reaches crates.io
-# AND clones two GitHub repos over git+https — `options="net"` (DIY repo, no
-# vendoring; same idiom as the sibling dirge/kumo/aevum/charon aports).
+# Cargo.lock pins three git deps (`[patch.crates-io]`): a crossterm rev for
+# bracketed-paste decoding, pydantic/monty (tag v0.0.23) for the python-ish
+# interpreter behind `code_execution`, and a tontinton/syntect rev fixing the
+# syntect 5.3.0 infinite-loop on lines like `x /*` — so `cargo fetch` in
+# prepare() reaches crates.io AND clones three GitHub repos over git+https —
+# `options="net"` (DIY repo, no vendoring; same idiom as the sibling
+# dirge/kumo/aevum/charon aports).
 #
-# Toolchain: MSRV 1.88 / edition 2024 (Alpine 3.24 ships rust 1.96, fine).
+# Toolchain: edition 2024. Upstream pins rust-version = 1.99 since v0.6.0
+# (exceeds Alpine 3.24's rust 1.96.1), so the build passes
+# `--ignore-rust-version`; the code has so far compiled fine on 1.96 — if a
+# future release starts using newer rustc features, CI will fail here and the
+# aport must be held back. `cargo fetch` itself does not enforce MSRV.
 # CC/CXX are pointed at clang (repo idiom, see dirge) to dodge GCC
 # format-hardening fatal errors on the vendored C/C++ under abuild's
 # `-Werror=format-security` CFLAGS.
 pkgname=maki
-pkgver=0.5.3
+pkgver=0.6.4
 pkgrel=0
 pkgdesc="AI coding agent with a native Rust TUI and Neovim-like Lua plugins"
 url="https://github.com/tontinton/maki"
@@ -89,9 +95,11 @@ build() {
 	esac
 
 	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	# --ignore-rust-version: upstream pins MSRV 1.99 > Alpine 3.24's 1.96.1
+	# (see header); without this cargo hard-errors before compiling.
 	# Plain `cargo build` at the workspace root builds just the `maki` bin
 	# (maki-docgen & friends are dev-time generators, not installed).
-	cargo auditable build --frozen --release
+	cargo auditable build --frozen --release --ignore-rust-version
 }
 
 package() {
@@ -99,5 +107,5 @@ package() {
 }
 
 sha512sums="
-9c34798ed6a3749963aba4a317b5e6536d66e696c836264b36524e9888b323c270325ad58f838c212a9e0555fbe7394ee0bad30dac55837f07d16d418ea548e8  maki-0.5.3.tar.gz
+ba49150747d9ef7c8a870accb5ff83986b994b681cc560939bb7533881bc798c29fe357acfeecf52f4cd0298297c2f0cdcbb0be8d91f9e07bab8664216f90f46  maki-0.6.4.tar.gz
 "
