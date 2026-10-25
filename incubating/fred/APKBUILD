@@ -93,7 +93,7 @@ makedepends="
 # `!check`: the test suite needs GPUs/wayland/LLM fixtures; upstream distro
 # packagers (Arch, nix) skip it too.
 options="net !check"
-source="$pkgname-$_tagver.tar.gz::https://git.emunest.net/rei-forks/fred/archive/$_tagver.tar.gz
+source="$pkgname-$_tagver.tar.gz::https://git.emunest.net/rei-forks/fred/archive/fred-v$_tagver.tar.gz
 	fred-livekit-musl.patch"
 builddir="$srcdir/fred"
 
