@@ -511,3 +511,99 @@ present).
 - Build times (native, GitHub-hosted 4-core runners): aevum ~30 min, charon
   ~45 min (Skia + libvalhalla dominate). No ccache/resumability needed (well
   under the 6h limit, unlike `wpewebkit-kumo`).
+
+# Plan/notes: package `fred` (Zed soft-fork)
+
+Goal: ship `incubating/fred/` — fred, rei's privacy-oriented soft-fork of the
+Zed editor (https://git.emunest.net/rei-forks/fred), tag `fred-v1.22.0+fred2`.
+Zed is the heaviest pure-Rust build in this repo by far (~1.2k crates, thin-LTO
+release profile), so RAM/parallelism are tuned down in the APKBUILD per the
+fork's own nix precedent ("build.nix: Build more gently" → `CARGO_BUILD_JOBS`).
+
+## Version scheme
+- Tags: `fred-v<zed-ver>+fredN` (fork patch level over an upstream Zed base).
+  nvchecker tracks tag regex `^fred-v\d+\.\d+\.\d+(\+fred\d+)?$`, prefix
+  `fred-v`, so the reported version keeps upstream spelling (`1.22.0+fred2`).
+- Alpine pkgver forbids `+` (apk versions: digits/letters/`.`/`_suffix`/
+  `~hash`/`-rN` only — checked apk-tools' `version.c` tokenizer). Respell as
+  the Alpine patch suffix: `1.22.0+fred2` → `pkgver=1.22.0_p2` (sorts right:
+  `_p1 < _p2` within a base version). Same convention documented in the
+  APKBUILD header.
+
+## Source
+- Fetchable Gitea archive URL works with the raw `+` in the tag path:
+  `https://git.emunest.net/rei-forks/fred/archive/fred-v1.22.0+fred2.tar.gz`
+  (24.7 MiB; extracts to `fred/`, hence `builddir="$srcdir/fred"`).
+
+## musl: the livekit/libwebrtc problem (solved via the freebsd fallback)
+- On glibc, Zed links LiveKit's **libwebrtc** (calls + the `audio` crate's
+  echo canceller). Upstream's `webrtc-sys` build script *downloads prebuilt
+  glibc-only `libwebrtc.a` archives* at build time (or builds via
+  GN/depot_tools — a Chromium-scale build). Neither is viable on musl; the
+  fork's own nix build instead builds libwebrtc from source with gclient2nix
+  (nix/livekit-libwebrtc/) — also not viable for CI.
+- Way out: the livekit_client and audio crates already carry
+  `target_os = "freebsd"` exclusion pairs that swap real implementations for
+  in-tree stubs (mock call client, no-op echo canceller, no-op call stats
+  diagnostics). `fred-livekit-musl.patch` adds
+  `all(target_os = "linux", target_env = "musl")` next to every
+  `target_os = "freebsd"` in those pairs:
+  - `crates/livekit_client/Cargo.toml` — exclude `libwebrtc`/`livekit` deps,
+    and restrict the `cfg(target_os = "linux")` tokio/`webrtc-sys` block to
+    gnu; scap stays (it's in the `any(linux, freebsd, windows)` block and
+    builds as a stub without its optional feature deps — zed enables only
+    `scap/x11`).
+  - `crates/livekit_client/src/lib.rs` — 5× mock/real cfg switch.
+  - `crates/audio/Cargo.toml` + `.../audio_pipeline/echo_canceller.rs` —
+    libwebrtc APM → no-op stub.
+  - `crates/call/src/call_impl/diagnostics.rs` — 2× real/fake stats fns
+    (found only by actually compiling: the mock `RtcStats` lacks the variants
+    the real fns destructure).
+- Verified with `cargo tree --target {x86_64,aarch64}-{unknown-linux-musl,
+  alpine-linux-musl}`: livekit/libwebrtc/webrtc-sys fully out of the
+  `-p zed -p cli` graph on musl; still present on the gnu triple (no glibc
+  regression). Result: **no audio/video calls on musl**; everything else of
+  Zed (editor, agent panel, LSP, extensions via wasmtime, …) intact.
+
+## Pre-flight validation (before burning a CI cycle)
+Replicated the CI toolchain exactly in a podman `alpine:3.24` container
+(`rust/cargo 1.96.1-r0`, protoc 31.1):
+- `cargo fetch --locked` ✓ (network git deps incl. livekit-rust-sdks work).
+- **No MSRV gate errors**: cargo 1.96.1 plans the whole build although the
+  fork pins rustup toolchain 1.98.1 in rust-toolchain.toml (rustup-only file,
+  ignored by Alpine's system rust). All locked crates' `rust-version` ≤ 1.96.
+- **`cargo check -p zed -p cli` passes** on the `x86_64-alpine-linux-musl`
+  triple with the APKBUILD's env (clang, system sqlite/zstd, protoc) — this
+  type-checks every workspace crate incl. aws-lc-sys's cmake build, the
+  protoc build scripts and the musl patch's cfg switching. NOT covered:
+  actual codegen/LTO/link and aarch64 — those land in CI.
+
+## Packaging notes
+- Binary layout per upstream docs: `cli` crate → `/usr/bin/zed` (PATH entry);
+  `zed` crate → `/usr/lib/zed/zed-editor` (the CLI finds it at
+  `bin/../lib/zed/zed-editor`). Completions generated from the CLI at package
+  time. Desktop entry `dev.zed.Zed.desktop` from the upstream template
+  (APP_NAME=Fred, TryExec/Exec=zed); icon `zed.png` in hicolor 512x512.
+- `RELEASE_CHANNEL` in-tree is already `stable`; `ZED_UPDATE_EXPLANATION`
+  disables the self-updater; `RELEASE_VERSION`/`ZED_COMMIT_SHA` baked.
+- System libs via pkg-config: sqlite (`LIBSQLITE3_SYS_USE_PKG_CONFIG`,
+  overrides the `bundled` feature — checked libsqlite3-sys build.rs precedence)
+  and zstd. `protoc` + `protobuf-dev` (well-known .protos) for codegen.
+  git2/libgit2 stays statically vendored (no libgit2-dev; Arch does the same;
+  script/linux listing it is vestigial). No openssl in the graph. No node/npm
+  at build OR runtime (fred "Unplug npm" commit removed the managed runtime).
+- Runtime deps invisible to `so:` autoscan (pure dlopen), hence explicit in
+  `depends=`: libxkbcommon + libxkbcommon-x11 (xkbcommon crate 0.8 dlopens
+  them), wayland (wayland-sys dlopens libwayland-client.so.0), vulkan-loader
+  (blade/ash dlopens libvulkan.so.1), git (crates/git shells out to the CLI).
+  libva/egl rpaths in zed's build.rs are webrtc-only → irrelevant on musl.
+- RAM/disk guard rails in build(): `CARGO_BUILD_JOBS=2` (user ask; fork's nix
+  uses 4), `CARGO_PROFILE_RELEASE_DEBUG=0` (smaller rlibs + thin-LTO session;
+  Alpine strips anyway), `CARGO_INCREMENTAL=0`. Expected -p zed -p cli release
+  build on a 4-core runner at -j2: ~2-3 h — well under the 6 h limit.
+- `remote_server` (musl static cross-build in upstream bundling) and `collab`
+  are deliberately NOT built — Arch/flatpak don't ship them either; remote dev
+  users get zed-remote-server from the remote host side.
+
+## CI iteration
+- (fill in after first CI run)

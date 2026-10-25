@@ -46,6 +46,16 @@ git = "https://github.com/dirge-code/dirge.git"
 include_regex = "^v\\d+\\.\\d+\\.\\d+$"
 prefix = "v"
 
+[fred]
+# Tags: fred-v1.22.0+fred2, fred-v1.22.0+fred1, fred-v0.216.1, ... (upstream
+# Zed base version + optional fork patch level). The reported version keeps
+# upstream spelling ("1.22.0+fred2"); the APKBUILD respells '+' as the Alpine
+# patch suffix when bumping (1.22.0+fred2 -> pkgver 1.22.0_p2).
+source = "git"
+git = "https://git.emunest.net/rei-forks/fred.git"
+include_regex = "^fred-v\\d+\\.\\d+\\.\\d+(\\+fred\\d+)?$"
+prefix = "fred-v"
+
 [kumo]
 source = "git"
 git = "https://git.sr.ht/~undeadleech/kumo"

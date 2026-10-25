@@ -29,6 +29,11 @@
     "eww-niri-toolbar": {
       "version": "51e01ee45422aae91c3956ed4f233d0b165e7b11"
     },
+    "fred": {
+      "version": "1.22.0+fred2",
+      "gitref": "refs/tags/fred-v1.22.0+fred2",
+      "revision": "61c3264673b826860a8eb6b1d099b27584205352"
+    },
     "kumo": {
       "version": "1.9.1",
       "gitref": "refs/tags/v1.9.1",

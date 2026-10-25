@@ -1,0 +1,172 @@
+# Contributor: 地震 <jishin@noreply.git.emunest.net>
+# Maintainer: 地震 <jishin@noreply.git.emunest.net>
+#
+# fred — privacy-oriented soft-fork of the Zed editor by rei
+# (https://git.emunest.net/rei-forks/fred): removes Zed's telemetry upload,
+# crash-report upload and all automatic downloads (language servers and the
+# managed Node.js runtime are gone — users put their own tools on PATH, cf.
+# upstream commit "Unplug npm"). Otherwise it is upstream Zed, so this
+# APKBUILD follows the "Notes for packaging Zed" section of
+# docs/src/development/linux.md and closely mirrors Arch's zed PKGBUILD.
+#
+# Version scheme: tags look like fred-v1.22.0+fred2 (upstream base version +
+# fork patch level). Alpine pkgver forbids '+' (apk versions are
+# digits/letters/./_suffix only), so we respell '+' as the patch suffix:
+# 1.22.0+fred2 -> 1.22.0_p2 (keeps _p1 < _p2 ordering within a base version).
+#
+# Binary layout (per upstream packaging docs): the `cli` crate binary is
+# installed as /usr/bin/zed (the CLI entry point users put on PATH); the GUI
+# binary from the `zed` crate goes to /usr/lib/zed/zed-editor, where the CLI
+# looks for it (bin/../lib/zed/zed-editor). Shell completions are generated
+# from the CLI at package time.
+#
+# musl (this is the big one): on glibc Linux the editor links LiveKit's
+# libwebrtc (calls: WebRTC + audio echo cancellation). Upstream consumes
+# PREBUILT glibc-only libwebrtc static libs downloaded at build time, so a
+# musl build is impossible as-is. The freebsd-style fallback is our way out:
+# livekit_client and the audio crate already carry `target_os = "freebsd"`
+# exclusion pairs that swap the real implementations for in-tree mock/stub
+# ones (mock call client, no-op echo canceller, no-op call diagnostics). The
+# committed fred-livekit-musl.patch adds
+# `all(target_os = "linux", target_env = "musl")` next to every
+# `target_os = "freebsd"` in those exclusion pairs, dropping the
+# livekit/libwebrtc/webrtc-sys dependency subtree entirely on musl while
+# leaving glibc targets untouched (verified with cargo tree for the
+# x86_64/aarch64 musl and gnu triples). Consequence for musl users: no
+# audio/video calls (the rest of Zed, including the agent panel, works).
+#
+# RAM/disk tuning (Zed is a monster build — ~1.2k crates, release profile
+# with lto=thin + codegen-units=1): CARGO_BUILD_JOBS is capped at 2 so two
+# opt-level-3 rustc invocations of the fattest crates (editor, gpui) never
+# overlap more than ~2x their per-crate peak, and CARGO_PROFILE_RELEASE_DEBUG=0
+# shrinks rlibs and the thin-LTO link session (Alpine strips symbols anyway;
+# no -dbg subpackage is planned). The fork's own nix build similarly sets
+# CARGO_BUILD_JOBS=4 ("build.nix: Build more gently").
+#
+# System libraries: sqlite and zstd are consumed via pkg-config
+# (LIBSQLITE3_SYS_USE_PKG_CONFIG / ZSTD_SYS_USE_PKG_CONFIG override the
+# vendored builds, same as Arch). protoc + protobuf well-known types are
+# needed by the livekit_api/zed build scripts. Fonts go through
+# freetype+fontconfig (zed-font-kit). git2/libgit2 is statically vendored by
+# the cargo crate, no system libgit2 involved.
+#
+# Runtime deps that so:-autoscan cannot see (pure dlopen): the xkbcommon
+# crate dlopens libxkbcommon.so.0 / libxkbcommon-x11.so.0, wayland-sys
+# dlopens libwayland-client.so.0, blade/ash dlopens libvulkan.so.1; the `git`
+# CLI is spawned for repository operations (see crates/git).
+pkgname=fred
+_tagver=1.22.0+fred2
+pkgver=1.22.0_p2
+pkgrel=0
+pkgdesc="Privacy-hardened soft-fork of the Zed code editor (no telemetry, no auto-downloads)"
+url="https://git.emunest.net/rei-forks/fred"
+arch="aarch64 x86_64"
+license="GPL-3.0-or-later"
+depends="
+	git
+	vulkan-loader
+	wayland
+	libxkbcommon
+	libxkbcommon-x11
+	"
+makedepends="
+	cargo
+	cargo-auditable
+	rust
+	clang
+	cmake
+	perl
+	protoc
+	protobuf-dev
+	sqlite-dev
+	zstd-dev
+	alsa-lib-dev
+	fontconfig-dev
+	freetype-dev
+	libx11-dev
+	libxcb-dev
+	libxkbcommon-dev
+	wayland-dev
+	"
+# `net`: cargo fetch in prepare() reaches crates.io + git deps (DIY repo, no
+# vendoring — same idiom as the sibling dirge/kumo aports).
+# `!check`: the test suite needs GPUs/wayland/LLM fixtures; upstream distro
+# packagers (Arch, nix) skip it too.
+options="net !check"
+source="$pkgname-$_tagver.tar.gz::https://git.emunest.net/rei-forks/fred/archive/$_tagver.tar.gz
+	fred-livekit-musl.patch"
+builddir="$srcdir/fred"
+
+prepare() {
+	default_prepare
+	# Populate the cargo cache for the host target (deterministic per
+	# Cargo.lock). CI builds natively per-arch, so fetching the host target
+	# is sufficient (this also skips the glibc-only livekit subtree on musl).
+	cargo fetch --target="$CTARGET" --locked
+}
+
+build() {
+	export CC=clang
+	export CXX=clang++
+
+	# RAM guard rails — see header comment. Never raise these on shared
+	# builders without measuring.
+	export CARGO_BUILD_JOBS=2
+	export CARGO_PROFILE_RELEASE_DEBUG=0
+	export CARGO_INCREMENTAL=0
+
+	# Link system sqlite/zstd instead of the vendored copies.
+	export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
+	export ZSTD_SYS_USE_PKG_CONFIG=1
+
+	# protobuf codegen (livekit_api + zed build scripts).
+	export PROTOC=/usr/bin/protoc
+	export PROTOC_INCLUDE=/usr/include
+
+	# Disable the in-app self-updater; bake fork/version/commit info.
+	export ZED_UPDATE_EXPLANATION="Updates are handled by apk."
+	export RELEASE_VERSION="$_tagver"
+	export ZED_COMMIT_SHA="61c3264673b826860a8eb6b1d099b27584205352"
+
+	# --frozen = --locked + --offline; uses only what `cargo fetch` cached.
+	cargo auditable build --frozen --release --package zed --package cli
+}
+
+package() {
+	install -D -m755 target/release/cli "$pkgdir"/usr/bin/zed
+	install -D -m755 target/release/zed "$pkgdir"/usr/lib/zed/zed-editor
+
+	install -D -m644 crates/zed/resources/app-icon.png \
+		"$pkgdir"/usr/share/icons/hicolor/512x512/apps/zed.png
+
+	# Desktop entry: populate the upstream template (APP_ID names the file
+	# per FreeDesktop convention).
+	install -d "$pkgdir"/usr/share/applications
+	sed -e 's|\$APP_NAME|Fred|g' \
+		-e 's|\$APP_CLI|zed|g' \
+		-e 's|\$APP_ICON|zed|g' \
+		-e 's|\$APP_ARGS|%U|g' \
+		-e 's|\$DO_STARTUP_NOTIFY|true|g' \
+		crates/zed/resources/zed.desktop.in \
+		> "$pkgdir"/usr/share/applications/dev.zed.Zed.desktop
+	chmod 755 "$pkgdir"/usr/share/applications/dev.zed.Zed.desktop
+
+	# Shell completions, generated from the CLI.
+	install -d \
+		"$pkgdir"/usr/share/bash-completion/completions \
+		"$pkgdir"/usr/share/fish/vendor_completions.d \
+		"$pkgdir"/usr/share/zsh/site-functions
+	target/release/cli --completions bash \
+		> "$pkgdir"/usr/share/bash-completion/completions/zed
+	target/release/cli --completions fish \
+		> "$pkgdir"/usr/share/fish/vendor_completions.d/zed.fish
+	target/release/cli --completions zsh \
+		> "$pkgdir"/usr/share/zsh/site-functions/_zed
+
+	install -D -m644 LICENSE-GPL "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+}
+
+sha512sums="
+73a445c60016aaec4bc785c9c6b1f7403cda6eb24ea87b3bedc8ea63a36a54ee35a88035fa399a2b358e56ccf5e84cf533fa6ba9fe7d8c8692dc6202071bf5c5  fred-1.22.0+fred2.tar.gz
+4df528eaffdd61cbba8db8e626a64f1e68d8a05304922285f4de9c83d746fd09f2ba27000098aadc9f5f064e691e10e3f0e2ceaa5cfc9cf12f373113cf081eb0  fred-livekit-musl.patch
+"
