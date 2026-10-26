@@ -607,3 +607,20 @@ Replicated the CI toolchain exactly in a podman `alpine:3.24` container
 
 ## CI iteration
 - (fill in after first CI run)
+- **CI run 1 (fetch 404)**: the `source=` URL must contain the FULL tag
+  (`.../archive/fred-v1.22.0+fred2.tar.gz`); I had dropped the `fred-v`
+  prefix when renaming to `$pkgname-$_tagver.tar.gz`.
+- **CI run 2 (x86_64 built in 79m, both arches failed)**:
+  1. `package()` failed under fakeroot: `cli --completions` refuses to run as
+     root ("Running Zed as root ... is unsupported"). Fix: generate the
+     completions at the end of build() (builder user) and just `install` the
+     files in package().
+  2. aarch64 rustc SIGABRT'd ~48 min into the final `zed` link: Alpine
+     abuild's `/usr/share/abuild/default.conf` force-exports
+     `CARGO_PROFILE_RELEASE_LTO=true` (FAT LTO!) over the workspace's
+     `thin`, plus `opt-level=s`/`panic=abort`/`codegen-units=1`. Fat-LTOing
+     the whole Zed binary doesn't fit in the runner's 16 GiB. Fix: re-export
+     `CARGO_PROFILE_RELEASE_LTO=thin` inside build() (env wins over
+     default.conf). x86_64 had *barely* survived the same fat link. abuild's
+     other cargo defaults (opt-level=s, panic=abort, CGU=1,
+     CARGO_BUILD_JOBS=nproc → overridden to 2 by build()) stay as-is.

@@ -37,11 +37,11 @@
 #
 # RAM/disk tuning (Zed is a monster build — ~1.2k crates, release profile
 # with lto=thin + codegen-units=1): CARGO_BUILD_JOBS is capped at 2 so two
-# opt-level-3 rustc invocations of the fattest crates (editor, gpui) never
-# overlap more than ~2x their per-crate peak, and CARGO_PROFILE_RELEASE_DEBUG=0
-# shrinks rlibs and the thin-LTO link session (Alpine strips symbols anyway;
-# no -dbg subpackage is planned). The fork's own nix build similarly sets
-# CARGO_BUILD_JOBS=4 ("build.nix: Build more gently").
+# opt-level rustc invocations of the fattest crates (editor, gpui) never
+# overlap more than ~2x their per-crate peak, CARGO_PROFILE_RELEASE_DEBUG=0
+# shrinks rlibs and the LTO link session (Alpine strips symbols anyway; no
+# -dbg subpackage is planned), and CARGO_PROFILE_RELEASE_LTO is pinned back
+# to thin (see build()).
 #
 # System libraries: sqlite and zstd are consumed via pkg-config
 # (LIBSQLITE3_SYS_USE_PKG_CONFIG / ZSTD_SYS_USE_PKG_CONFIG override the
@@ -114,6 +114,13 @@ build() {
 	export CARGO_BUILD_JOBS=2
 	export CARGO_PROFILE_RELEASE_DEBUG=0
 	export CARGO_INCREMENTAL=0
+	# abuild's hardening defaults (/usr/share/abuild/default.conf) force
+	# CARGO_PROFILE_RELEASE_LTO=true, i.e. FAT LTO — a multi-GB link session
+	# that OOM-aborted rustc on the 16 GiB aarch64 runner (and made x86_64
+	# take 79 min). Restore the workspace profile's thin LTO, which the fork
+	# itself builds with. Keep abuild's other defaults (opt-level=s,
+	# panic=abort, codegen-units=1).
+	export CARGO_PROFILE_RELEASE_LTO=thin
 
 	# Link system sqlite/zstd instead of the vendored copies.
 	export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
@@ -151,17 +158,24 @@ package() {
 		> "$pkgdir"/usr/share/applications/dev.zed.Zed.desktop
 	chmod 755 "$pkgdir"/usr/share/applications/dev.zed.Zed.desktop
 
-	# Shell completions, generated from the CLI.
+	# Shell completions, generated in build() (see below).
 	install -d \
 		"$pkgdir"/usr/share/bash-completion/completions \
 		"$pkgdir"/usr/share/fish/vendor_completions.d \
 		"$pkgdir"/usr/share/zsh/site-functions
-	target/release/cli --completions bash \
-		> "$pkgdir"/usr/share/bash-completion/completions/zed
-	target/release/cli --completions fish \
-		> "$pkgdir"/usr/share/fish/vendor_completions.d/zed.fish
-	target/release/cli --completions zsh \
-		> "$pkgdir"/usr/share/zsh/site-functions/_zed
+	install -m644 "$srcdir"/completions.bash \
+		"$pkgdir"/usr/share/bash-completion/completions/zed
+	install -m644 "$srcdir"/completions.fish \
+		"$pkgdir"/usr/share/fish/vendor_completions.d/zed.fish
+	install -m644 "$srcdir"/completions.zsh \
+		"$pkgdir"/usr/share/zsh/site-functions/_zed
+
+	# Shell completions: generate them here in build(), not in package() —
+	# the CLI refuses to run as root and abuild packages under fakeroot.
+	for shell in bash fish zsh; do
+		target/release/cli --completions "$shell" \
+			> "$srcdir/completions.$shell"
+	done
 
 	install -D -m644 LICENSE-GPL "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
 }
